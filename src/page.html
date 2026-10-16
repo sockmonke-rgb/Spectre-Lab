@@ -270,6 +270,8 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
         <label class="btn filebtn">Add picture<input type="file" id="imgFile" accept="image/*"></label>
         <label class="st-field" for="imgScale">Scale <input type="range" id="imgScale" min="-100" max="150" step="1" value="0"><span class="st-val" id="imgScaleVal"></span></label>
         <label class="st-field" for="imgRot">Turn <input type="range" id="imgRot" min="-180" max="180" step="1" value="0"><span class="st-val" id="imgRotVal"></span></label>
+        <button type="button" class="btn" id="imgMirror" title="Mirror the picture left to right">Mirror ↔</button>
+        <button type="button" class="btn" id="imgFlip" title="Flip the picture top to bottom">Flip ↕</button>
         <button type="button" class="btn" id="imgFit">Fit picture</button>
         <button type="button" class="btn" id="imgRemove">Remove picture</button>
         <label class="st-field" for="bgColour">Tile colour <input type="color" id="bgColour" value="#f4efe4"></label>

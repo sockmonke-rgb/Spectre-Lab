@@ -328,6 +328,7 @@
     g.fillStyle = sl.bg; g.fillRect(0, 0, TEXN, TEXN);
     if (sl.img) {
       g.save(); g.translate(lx2px(sl.imgT.x), ly2py(sl.imgT.y)); g.rotate(sl.imgT.r * Math.PI / 180);
+      g.scale(sl.imgT.fx ? -1 : 1, sl.imgT.fy ? -1 : 1);
       const w = sl.imgT.s * RES, h = w * sl.img.height / sl.img.width;
       g.imageSmoothingQuality = 'high'; g.drawImage(sl.img, -w / 2, -h / 2, w, h); g.restore();
     }
@@ -670,7 +671,7 @@
     const f = Math.min(1, 1400 / Math.max(w0, h0)), c = mk(Math.max(1, Math.round(w0 * f)), Math.max(1, Math.round(h0 * f)));
     c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
     const sl = cur(); pushUndo(sl);
-    sl.img = c;
+    sl.img = c; sl.imgT.fx = false; sl.imgT.fy = false;
     try { sl.imgSrc = c.toDataURL(keepAlpha ? 'image/png' : 'image/jpeg', 0.88); } catch (_) { sl.imgSrc = null; }
     fitPicture(sl); D.tool = 'move';
     const hadLoops = sl.loops; sl.loops = false;
@@ -690,7 +691,7 @@
   }
   function fitPicture(sl) {
     if (!sl.img) return;
-    sl.imgT = { x: BB.cx, y: BB.cy, s: fitScale(sl), r: 0 };
+    sl.imgT = { x: BB.cx, y: BB.cy, s: fitScale(sl), r: 0, fx: !!sl.imgT.fx, fy: !!sl.imgT.fy };   // Fit keeps any mirroring
   }
   $('imgFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
   const stStage = $('stStage'), dropEl = $('drop');
@@ -803,6 +804,17 @@
   });
   sliderUndo($('imgRot'), sl => { if (sl.img) { sl.imgT.r = +$('imgRot').value; $('imgRotVal').textContent = sl.imgT.r + '°'; } });
   sliderUndo($('bgColour'), sl => { sl.bg = $('bgColour').value; });
+  // Mirror and flip as seen on screen, about the picture's centre: toggling the picture's own axis
+  // and negating its turn gives the same result as reflecting the turned picture.
+  function flipPicture(axis) {
+    const sl = cur(); if (gLocked() || !sl.img) return;
+    pushUndo(sl);
+    if (axis === 'x') sl.imgT.fx = !sl.imgT.fx; else sl.imgT.fy = !sl.imgT.fy;
+    sl.imgT.r = wrapDeg(-sl.imgT.r);
+    changed(sl, true); syncStudio();
+  }
+  $('imgMirror').addEventListener('click', () => flipPicture('x'));
+  $('imgFlip').addEventListener('click', () => flipPicture('y'));
   $('imgFit').addEventListener('click', () => { const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); fitPicture(sl); changed(sl, true); syncStudio(); });
   $('imgRemove').addEventListener('click', () => {
     const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); sl.img = null; sl.imgSrc = null;
@@ -826,7 +838,7 @@
     $('brushColour').value = D.colour; $('brushSize').value = D.size; $('bgColour').value = sl.bg;
     $('tLoops').checked = !!(gLocked() ? D.slots[0] : sl).loops;
     const hasImg = !!sl.img;
-    $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = !hasImg;
+    $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = $('imgMirror').disabled = $('imgFlip').disabled = !hasImg;
     syncSteppers();
     syncScaleLabel(sl);
     ed.classList.toggle('move', D.tool === 'move');

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0 — 2026-10-16
+
+- Tile studio: Mirror ↔ and Flip ↕ buttons for the picture. They work as seen on screen, about the picture's centre, even when it is turned, and each is one undo step. Fit picture keeps the mirroring; a new picture starts unmirrored.
+
 ## 1.4.0 — 2026-10-16
 
 - The tile studio opens on Move picture instead of Brush.

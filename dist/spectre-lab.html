@@ -270,6 +270,8 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
         <label class="btn filebtn">Add picture<input type="file" id="imgFile" accept="image/*"></label>
         <label class="st-field" for="imgScale">Scale <input type="range" id="imgScale" min="-100" max="150" step="1" value="0"><span class="st-val" id="imgScaleVal"></span></label>
         <label class="st-field" for="imgRot">Turn <input type="range" id="imgRot" min="-180" max="180" step="1" value="0"><span class="st-val" id="imgRotVal"></span></label>
+        <button type="button" class="btn" id="imgMirror" title="Mirror the picture left to right">Mirror ↔</button>
+        <button type="button" class="btn" id="imgFlip" title="Flip the picture top to bottom">Flip ↕</button>
         <button type="button" class="btn" id="imgFit">Fit picture</button>
         <button type="button" class="btn" id="imgRemove">Remove picture</button>
         <label class="st-field" for="bgColour">Tile colour <input type="color" id="bgColour" value="#f4efe4"></label>
@@ -285,7 +287,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <div>
         <h1>Spectre Lab</h1>
         <p class="sub">The chiral aperiodic monotile, grown from nine hexagons and addressed by combinatorial coordinates.</p>
-        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.4.0</span>f557850 · 2026-10-16 17:24 UTC</p>
+        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.5.0</span>80789e5 · 2026-10-16 17:39 UTC</p>
       </div>
     </header>
 
@@ -363,7 +365,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <p>Positions are exact. Each vertex is <span class="mono">a₀ + a₁d + a₂d² + a₃d³</span> with integer coefficients and <span class="mono">d = e<sup>iπ/6</sup></span>. Curved edges bulge out on even edges and in on odd ones; every shared edge still matches, which is the odd-to-even rule that makes the tile strongly chiral.</p>
       <p>The tile studio paints one Spectre. Every tile in the patch reuses that painting, moved and turned to fit, and the turned G halves can carry a design of their own. Your design stays in this browser.</p>
       <p>Sources: <a href="https://arxiv.org/abs/2305.17743" target="_blank" rel="noopener">A chiral aperiodic monotile</a> (Smith, Myers, Kaplan, Goodman-Strauss, 2023) and Simon Tatham's <a href="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-spectre/" target="_blank" rel="noopener">Combinatorial coordinates for the aperiodic Spectre tiling</a>. Hexagon letters, child numbers and edge numbers follow Tatham.</p>
-      <p>Spectre Lab v1.4.0 (build f557850) is released under the MIT License.</p>
+      <p>Spectre Lab v1.5.0 (build 80789e5) is released under the MIT License.</p>
     </section>
   </aside>
 </div>
@@ -756,7 +758,7 @@ const FileFormats = (function () {
   'use strict';
   const C = SpectreCore;
   // Filled in by scripts/build.js: the version from package.json, a hash of the sources, and the build time.
-  const BUILD = { version: '1.4.0', hash: 'f557850', date: '2026-10-16 17:24 UTC' };
+  const BUILD = { version: '1.5.0', hash: '80789e5', date: '2026-10-16 17:39 UTC' };
   try { console.info(`Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})`); } catch (_) {}
   const $ = id => document.getElementById(id);
   const MAXD = 5;
@@ -1082,6 +1084,7 @@ const FileFormats = (function () {
     g.fillStyle = sl.bg; g.fillRect(0, 0, TEXN, TEXN);
     if (sl.img) {
       g.save(); g.translate(lx2px(sl.imgT.x), ly2py(sl.imgT.y)); g.rotate(sl.imgT.r * Math.PI / 180);
+      g.scale(sl.imgT.fx ? -1 : 1, sl.imgT.fy ? -1 : 1);
       const w = sl.imgT.s * RES, h = w * sl.img.height / sl.img.width;
       g.imageSmoothingQuality = 'high'; g.drawImage(sl.img, -w / 2, -h / 2, w, h); g.restore();
     }
@@ -1424,7 +1427,7 @@ const FileFormats = (function () {
     const f = Math.min(1, 1400 / Math.max(w0, h0)), c = mk(Math.max(1, Math.round(w0 * f)), Math.max(1, Math.round(h0 * f)));
     c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
     const sl = cur(); pushUndo(sl);
-    sl.img = c;
+    sl.img = c; sl.imgT.fx = false; sl.imgT.fy = false;
     try { sl.imgSrc = c.toDataURL(keepAlpha ? 'image/png' : 'image/jpeg', 0.88); } catch (_) { sl.imgSrc = null; }
     fitPicture(sl); D.tool = 'move';
     const hadLoops = sl.loops; sl.loops = false;
@@ -1444,7 +1447,7 @@ const FileFormats = (function () {
   }
   function fitPicture(sl) {
     if (!sl.img) return;
-    sl.imgT = { x: BB.cx, y: BB.cy, s: fitScale(sl), r: 0 };
+    sl.imgT = { x: BB.cx, y: BB.cy, s: fitScale(sl), r: 0, fx: !!sl.imgT.fx, fy: !!sl.imgT.fy };   // Fit keeps any mirroring
   }
   $('imgFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
   const stStage = $('stStage'), dropEl = $('drop');
@@ -1557,6 +1560,17 @@ const FileFormats = (function () {
   });
   sliderUndo($('imgRot'), sl => { if (sl.img) { sl.imgT.r = +$('imgRot').value; $('imgRotVal').textContent = sl.imgT.r + '°'; } });
   sliderUndo($('bgColour'), sl => { sl.bg = $('bgColour').value; });
+  // Mirror and flip as seen on screen, about the picture's centre: toggling the picture's own axis
+  // and negating its turn gives the same result as reflecting the turned picture.
+  function flipPicture(axis) {
+    const sl = cur(); if (gLocked() || !sl.img) return;
+    pushUndo(sl);
+    if (axis === 'x') sl.imgT.fx = !sl.imgT.fx; else sl.imgT.fy = !sl.imgT.fy;
+    sl.imgT.r = wrapDeg(-sl.imgT.r);
+    changed(sl, true); syncStudio();
+  }
+  $('imgMirror').addEventListener('click', () => flipPicture('x'));
+  $('imgFlip').addEventListener('click', () => flipPicture('y'));
   $('imgFit').addEventListener('click', () => { const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); fitPicture(sl); changed(sl, true); syncStudio(); });
   $('imgRemove').addEventListener('click', () => {
     const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); sl.img = null; sl.imgSrc = null;
@@ -1580,7 +1594,7 @@ const FileFormats = (function () {
     $('brushColour').value = D.colour; $('brushSize').value = D.size; $('bgColour').value = sl.bg;
     $('tLoops').checked = !!(gLocked() ? D.slots[0] : sl).loops;
     const hasImg = !!sl.img;
-    $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = !hasImg;
+    $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = $('imgMirror').disabled = $('imgFlip').disabled = !hasImg;
     syncSteppers();
     syncScaleLabel(sl);
     ed.classList.toggle('move', D.tool === 'move');
