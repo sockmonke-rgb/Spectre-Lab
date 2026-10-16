@@ -1075,6 +1075,7 @@
   const PAGES = { a4: { pt: [595.28, 841.89], label: 'A4' }, a3: { pt: [841.89, 1190.55], label: 'A3' }, letter: { pt: [612, 792], label: 'Letter' } };
   const PDF_MARGIN = 28.35, PDF_CAPTION = 14, PDF_DPI = 300;
   let downloadsApi = null, previewUrl = null;
+  const topLevel = () => { try { return window.top === window.self; } catch (_) { return false; } };
   (async () => {
     try { if (window.claude && typeof window.claude.use === 'function') downloadsApi = await window.claude.use('downloads'); } catch (_) { downloadsApi = null; }
     if (P) syncExport();
@@ -1284,13 +1285,23 @@
         if (code === 'too_large') { setXNote('That file is too large to save here. Choose a smaller size.'); return; }
       }
     }
+    // A page of its own (the website, or the file opened directly) can simply download the file.
+    // Inside a frame the browser may block downloads silently, so frames keep the picture below.
+    if (topLevel()) {
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = name; a.rel = 'noopener'; a.hidden = true;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setXNote('Downloaded ' + name);
+      return;
+    }
     // no save prompt in this view: show the picture so it can be saved from the browser
     const png = name.endsWith('.png') ? blob : await toBlob(canvas, 'image/png');
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(png);
     $('xpImg').src = previewUrl;
     $('xpMsg').textContent = (name.endsWith('.pdf') ? 'This view cannot offer a PDF to save, so here is the same picture as a PNG. ' : 'This view cannot offer a file to save. ')
-      + 'Right-click or long-press the picture to save it, or open Spectre Lab in claude.ai to save files directly.';
+      + 'Right-click or long-press the picture to save it, or open Spectre Lab in a tab of its own to download files directly.';
     previewReturn = document.activeElement;
     $('xPreview').hidden = false; $('xpClose').focus();
     setXNote('Shown below as a picture');

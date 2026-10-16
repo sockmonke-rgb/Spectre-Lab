@@ -29,7 +29,7 @@ An interactive explorer for the Spectre, the chiral aperiodic monotile found by 
 Live at **https://sockmonke-rgb.github.io/Spectre-Lab/**, or open `dist/spectre-lab.html` in a browser.
 
 - Fonts come from Google Fonts; without a connection the page falls back to system fonts.
-- Saving files uses the save prompt when the page runs as a Claude artifact. Opened anywhere else, an export appears in a window, where you can right-click or long-press it to save.
+- Saving files uses the save prompt when the page runs as a Claude artifact. On the website, or with the file opened directly, exports download as files. Shown inside a frame elsewhere, an export appears as a picture you can right-click or long-press to save.
 - Your tile design is kept in the browser's local storage, so it stays on that browser only.
 
 ## Versions
