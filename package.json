@@ -8,6 +8,7 @@
   "private": true,
   "scripts": {
     "build": "node scripts/build.js",
+    "site": "node scripts/site.js",
     "test": "node --test"
   },
   "engines": {

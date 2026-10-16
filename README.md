@@ -62,12 +62,13 @@ Set `SOURCE_DATE_EPOCH` to fix the build timestamp. The source hash depends only
 | `src/app.js` | Rendering, interaction, tile studio, export |
 | `src/page.html` | Markup and styles, with placeholders for the scripts and the version stamp |
 | `scripts/build.js` | Assembles `src/` into `dist/spectre-lab.html` |
-| `test/` | Tests for the engine and the file formats |
+| `scripts/site.js` | Wraps the built page as the standalone site in `_site/` |
+| `test/` | Tests for the engine, the file formats and the site page |
 | `dist/spectre-lab.html` | The built page, committed so the repo works without building |
 
 ## Deploying
 
-Every push to `main` publishes the site through GitHub Actions (`.github/workflows/pages.yml`), except pushes that only touch `docs/` or Markdown files: it runs the tests, builds the page from `src/`, and serves it as `index.html`. The build stamp uses the commit time, so a given commit always produces the same page. If the committed `dist/` is older than `src/`, the run still deploys a fresh build and leaves a warning.
+Every push to `main` publishes the site through GitHub Actions (`.github/workflows/pages.yml`), except pushes that only touch `docs/` or Markdown files: it runs the tests, builds the page from `src/`, and serves it as `index.html`. `dist/spectre-lab.html` is a fragment, because claude.ai supplies the document around an artifact; `npm run site` wraps it for an ordinary web host with a doctype, a mobile viewport, a favicon and link-preview tags (the preview image is `docs/social.png`). The build stamp uses the commit time, so a given commit always produces the same page. If the committed `dist/` is older than `src/`, the run still deploys a fresh build and leaves a warning.
 
 One-time setup: Settings > Pages > Source: **GitHub Actions**.
 

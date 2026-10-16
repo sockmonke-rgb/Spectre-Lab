@@ -1,5 +1,5 @@
 # Publishes Spectre Lab to GitHub Pages on every push to main.
-# Runs the tests, builds dist/spectre-lab.html from src/, and serves it as index.html.
+# Runs the tests, builds dist/spectre-lab.html from src/, and serves it as a standalone index.html.
 # Needs Settings > Pages > Source set to "GitHub Actions".
 name: Deploy to GitHub Pages
 
@@ -47,8 +47,7 @@ jobs:
           if [ "$committed" != "$fresh" ]; then
             echo "::warning file=dist/spectre-lab.html::The committed page is older than src/. The site uses a fresh build; run npm run build and commit dist/ to bring the repo copy up to date."
           fi
-          mkdir -p _site
-          cp dist/spectre-lab.html _site/index.html
+          npm run site   # wraps the page as a standalone document in _site/
 
       - uses: actions/upload-pages-artifact@v5
         with:
