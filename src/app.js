@@ -988,7 +988,8 @@
   }
 
   // ---------- export: PNG or a one-page PDF of the view or the whole patch ----------
-  const X = { area: 'view', format: 'png', size: 4000, page: 'a4', transparent: false, transTouched: false, overlays: true,
+  // Background per format: PNG can be the screen colour, white or transparent; PDF the screen colour or white.
+  const X = { area: 'view', format: 'png', size: 4000, page: 'a4', bgPng: 'screen', bgPngTouched: false, bgPdf: 'white', overlays: true,
               tileSlot: 0, edgeMm: 30, busy: false };
   const TILE_M = 0.2;     // margin round a single tile, in edge lengths: room for curved edges and the outline
   const PAGES = { a4: { pt: [595.28, 841.89], label: 'A4' }, a3: { pt: [841.89, 1190.55], label: 'A3' }, letter: { pt: [612, 792], label: 'Letter' } };
@@ -1079,6 +1080,21 @@
     ops += `BT /F1 7 Tf 0 0 0 rg ${(bx + bl + 6).toFixed(2)} ${by - 2.5} Td (50 mm: measure this to check the print is actual size) Tj ET\n`;
     return ops;
   }
+  const bgChoice = () => X.format === 'png' ? X.bgPng : X.bgPdf;
+  function bgFill() { const b = bgChoice(); return b === 'transparent' ? null : b === 'white' ? '#ffffff' : PAL.stage; }
+  // On white the tiling is drawn in the light palette, whatever the screen theme, so it prints cleanly.
+  function lightPalette() {
+    const root = document.documentElement, prev = root.getAttribute('data-theme'), cur = PAL;
+    root.setAttribute('data-theme', 'light'); readPalette(); const light = PAL;
+    if (prev === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', prev);
+    PAL = cur;
+    return light;
+  }
+  function withExportPalette(fn) {
+    if (bgChoice() !== 'white') return fn();
+    const cur = PAL; PAL = lightPalette();
+    try { return fn(); } finally { PAL = cur; }
+  }
   function tileFileBase() { return `spectre-lab-tile${X.tileSlot ? '-g-halves' : ''}${X.format === 'pdf' ? '-' + X.edgeMm + 'mm' : ''}`; }
   function tileCaption() {
     const L = tileLayout();
@@ -1104,19 +1120,22 @@
     if (!D.ownG) X.tileSlot = 0;
     press($('xArea'), X.area); press($('xFormat'), X.format); press($('xSize'), X.size); press($('xPage'), X.page); press($('xTile'), X.tileSlot);
     $('xSizeRow').hidden = X.format !== 'png'; $('xPageRow').hidden = X.format !== 'pdf';
-    $('xTransRow').hidden = X.format !== 'png';
+    $('xBgRow').hidden = tile && X.format === 'pdf';      // a tile PDF is always on the white page
+    seg($('xBg'), [{ v: 'screen', label: 'Screen colour' }, { v: 'white', label: 'White' }].concat(X.format === 'png' ? [{ v: 'transparent', label: 'Transparent' }] : []),
+      v => { if (X.format === 'png') { X.bgPng = v; X.bgPngTouched = true; } else X.bgPdf = v; syncExport(); });
+    press($('xBg'), bgChoice());
     $('xTileRow').hidden = !tile || !D.ownG;
     $('xEdgeRow').hidden = !(tile && X.format === 'pdf');
     $('xEdge').value = X.edgeMm; $('xEdgeVal').textContent = X.edgeMm;
     $('xOverlaysLbl').textContent = tile ? 'Tile outline' : 'Outlines and letters';
-    $('xOverlays').checked = X.overlays; $('xTrans').checked = X.transparent;
+    $('xOverlays').checked = X.overlays;
     $('xGo').textContent = X.format === 'png' ? 'Save PNG' : 'Save PDF';
     xGoState();
     if (X.busy) return;
     if (tile) {
       if (X.format === 'png') {
         const k = X.size / (BB.w + 2 * TILE_M);
-        setXNote(`${fmt(X.size)} × ${fmt(Math.round((BB.h + 2 * TILE_M) * k))} px${X.transparent ? ', transparent around the tile' : ''}`);
+        setXNote(`${fmt(X.size)} × ${fmt(Math.round((BB.h + 2 * TILE_M) * k))} px${{ transparent: ', transparent around the tile', white: ', white around the tile' }[X.bgPng] || ''}`);
       } else {
         const L = tileLayout();
         setXNote(L.fits ? `Tile ${L.wmm.toFixed(1)} × ${L.hmm.toFixed(1)} mm on ${PAGES[X.page].label} landscape, printed at actual size`
@@ -1139,12 +1158,12 @@
     try {
       if (X.area === 'tile') { await exportTile(); return; }
       if (X.format === 'png') {
-        const c = renderExport(X.size, X.transparent ? null : PAL.stage);
+        const c = withExportPalette(() => renderExport(X.size, bgFill()));
         const raw = new Uint8Array(await (await toBlob(c, 'image/png')).arrayBuffer());
         const png = FileFormats.addPngText(raw, { Title: 'Spectre tiling', Description: caption(), Software: `Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})` });
         await offer(fileBase() + '.png', new Blob([png], { type: 'image/png' }), c);
       } else {
-        const c = renderExport(pdfLongEdge(), X.area === 'patch' ? '#ffffff' : PAL.stage);
+        const c = withExportPalette(() => renderExport(pdfLongEdge(), bgFill()));
         const jpg = new Uint8Array(await (await toBlob(c, 'image/jpeg', 0.92)).arrayBuffer());
         const pdf = buildPdf(jpg, c.width, c.height, X.page, caption());
         await offer(fileBase() + '.pdf', new Blob([pdf], { type: 'application/pdf' }), c);
@@ -1158,7 +1177,7 @@
     const sl = D.slots[X.tileSlot] || D.slots[0];
     const sw = `Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})`;
     if (X.format === 'png') {
-      const c = renderTile(X.size / (BB.w + 2 * TILE_M), sl, X.transparent ? null : PAL.stage, X.overlays);
+      const c = renderTile(X.size / (BB.w + 2 * TILE_M), sl, bgFill(), X.overlays);
       const raw = new Uint8Array(await (await toBlob(c, 'image/png')).arrayBuffer());
       const png = FileFormats.addPngText(raw, { Title: 'Spectre tile', Description: tileCaption().replace(/ - print at.*? - /, ' - '), Software: sw });
       await offer(tileFileBase() + '.png', new Blob([png], { type: 'image/png' }), c);
@@ -1201,7 +1220,7 @@
   }
   seg($('xArea'), [{ v: 'view', label: 'Current view' }, { v: 'patch', label: 'Whole patch' }, { v: 'tile', label: 'Single tile' }], v => {
     X.area = v;
-    if (v === 'tile' && !X.transTouched) X.transparent = true;   // a lone tile reads best on transparency
+    if (v === 'tile' && !X.bgPngTouched) X.bgPng = 'transparent';   // a lone tile reads best on transparency
     syncExport();
   });
   seg($('xTile'), [{ v: 0, label: 'Every Spectre' }, { v: 1, label: 'Turned G halves' }], v => { X.tileSlot = +v; syncExport(); });
@@ -1211,7 +1230,6 @@
   seg($('xSize'), [2000, 4000, 8000].map(n => ({ v: n, label: fmt(n) + ' px' })), v => { X.size = +v; syncExport(); });
   seg($('xPage'), Object.keys(PAGES).map(k => ({ v: k, label: PAGES[k].label })), v => { X.page = v; syncExport(); });
   $('xOverlays').addEventListener('change', e => { X.overlays = e.target.checked; });
-  $('xTrans').addEventListener('change', e => { X.transparent = e.target.checked; X.transTouched = true; syncExport(); });
   $('xGo').addEventListener('click', doExport);
   $('xpClose').addEventListener('click', closePreview);
   $('xPreview').addEventListener('click', e => { if (e.target.id === 'xPreview') closePreview(); });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0 — 2026-10-16
+
+- Export background is now a choice: screen colour, white, or (PNG only) transparent. PDFs default to white.
+- On a white background the tiling is drawn in the light colours, even when the app is in dark mode, so exports print cleanly.
+- A single-tile PDF stays on the white page, so it has no background choice.
+
 ## 1.6.0 — 2026-10-16
 
 - Export a single tile: your tile design on one Spectre.
