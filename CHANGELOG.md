@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2 — 2026-10-16
+
+- New tile designs start blank. The arcs that used to be painted into every new design are now an "Edge loops" switch in the tile studio, off unless you turn it on.
+- Adding a picture switches the edge loops off, and "Clear drawing" clears them too.
+- Designs saved by earlier versions have the painted-in arcs lifted out on load, keeping your own drawing and pictures.
+
 ## 1.3.1 — 2026-10-16
 
 - Choosing the "Turned G halves" tab in the tile studio no longer switches on a separate design by itself. The tab now shows which design the turned G halves use, and giving them their own design is a separate button. A new G-halves design starts as a copy of your main design.

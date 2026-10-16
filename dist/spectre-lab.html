@@ -265,6 +265,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
         <button type="button" class="btn" id="imgFit">Fit picture</button>
         <button type="button" class="btn" id="imgRemove">Remove picture</button>
         <label class="st-field" for="bgColour">Tile colour <input type="color" id="bgColour" value="#f4efe4"></label>
+        <label class="tog" title="Arcs that join the middles of neighbouring edges, so they run on from tile to tile"><input type="checkbox" id="tLoops"><span>Edge loops</span></label>
         <label class="tog"><input type="checkbox" id="tGuides" checked><span>Edge guides</span></label>
       </div>
     </div>
@@ -276,7 +277,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <div>
         <h1>Spectre Lab</h1>
         <p class="sub">The chiral aperiodic monotile, grown from nine hexagons and addressed by combinatorial coordinates.</p>
-        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.3.1</span>2ddefc0 · 2026-10-16 14:45 UTC</p>
+        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.3.2</span>f15d6a8 · 2026-10-16 15:10 UTC</p>
       </div>
     </header>
 
@@ -354,7 +355,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <p>Positions are exact. Each vertex is <span class="mono">a₀ + a₁d + a₂d² + a₃d³</span> with integer coefficients and <span class="mono">d = e<sup>iπ/6</sup></span>. Curved edges bulge out on even edges and in on odd ones; every shared edge still matches, which is the odd-to-even rule that makes the tile strongly chiral.</p>
       <p>The tile studio paints one Spectre. Every tile in the patch reuses that painting, moved and turned to fit, and the turned G halves can carry a design of their own. Your design stays in this browser.</p>
       <p>Sources: <a href="https://arxiv.org/abs/2305.17743" target="_blank" rel="noopener">A chiral aperiodic monotile</a> (Smith, Myers, Kaplan, Goodman-Strauss, 2023) and Simon Tatham's <a href="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-spectre/" target="_blank" rel="noopener">Combinatorial coordinates for the aperiodic Spectre tiling</a>. Hexagon letters, child numbers and edge numbers follow Tatham.</p>
-      <p>Spectre Lab v1.3.1 (build 2ddefc0) is released under the MIT License.</p>
+      <p>Spectre Lab v1.3.2 (build f15d6a8) is released under the MIT License.</p>
     </section>
   </aside>
 </div>
@@ -747,7 +748,7 @@ const FileFormats = (function () {
   'use strict';
   const C = SpectreCore;
   // Filled in by scripts/build.js: the version from package.json, a hash of the sources, and the build time.
-  const BUILD = { version: '1.3.1', hash: '2ddefc0', date: '2026-10-16 14:45 UTC' };
+  const BUILD = { version: '1.3.2', hash: 'f15d6a8', date: '2026-10-16 15:10 UTC' };
   try { console.info(`Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})`); } catch (_) {}
   const $ = id => document.getElementById(id);
   const MAXD = 5;
@@ -1064,7 +1065,7 @@ const FileFormats = (function () {
     const draw = mk(TEXN), tex = mk(TEXN);
     return { bg: '#f4efe4', img: null, imgSrc: null, imgT: { x: BB.cx, y: BB.cy, s: 5, r: 0 },
              draw, dctx: draw.getContext('2d', { willReadFrequently: true }), tex, tctx: tex.getContext('2d'),
-             avg: '#e9e3d7', pats: new Map(), undo: [], edited: false };
+             avg: '#e9e3d7', pats: new Map(), undo: [], edited: false, loops: false, loopsInk: '#1d4f9a' };
   }
   const avgC = mk(24), avgG = avgC.getContext('2d', { willReadFrequently: true });
   function compose(sl) {
@@ -1076,6 +1077,7 @@ const FileFormats = (function () {
       const w = sl.imgT.s * RES, h = w * sl.img.height / sl.img.width;
       g.imageSmoothingQuality = 'high'; g.drawImage(sl.img, -w / 2, -h / 2, w, h); g.restore();
     }
+    if (sl.loops) drawLoops(g, sl.loopsInk);
     g.drawImage(sl.draw, 0, 0);
     avgG.clearRect(0, 0, 24, 24); avgG.drawImage(sl.tex, 0, 0, 24, 24);
     const d = avgG.getImageData(0, 0, 24, 24).data; let r = 0, gg = 0, b = 0, n = 0;
@@ -1096,19 +1098,19 @@ const FileFormats = (function () {
     return m[kind] = p;
   }
 
-  // Loops for the starter design: a quarter-ish arc round alternate corners joins the midpoints of
-  // neighbouring edges, meeting each edge square-on, so every arc carries on into the next tile.
-  function starter(sl, ink, bg, par) {
-    sl.bg = bg; const g = sl.dctx;
-    g.setTransform(...TO_PX); g.strokeStyle = ink; g.lineWidth = 0.13; g.lineCap = 'butt';
-    for (let e = par; e < 14; e += 2) {
+  // Edge loops (optional): an arc round alternate corners joins the midpoints of neighbouring edges,
+  // meeting each edge square-on, so every arc carries on into the next tile.
+  // Draws into a context whose transform is the identity in texture pixels.
+  function drawLoops(g, ink) {
+    g.save(); g.setTransform(...TO_PX); g.strokeStyle = ink; g.lineWidth = 0.13; g.lineCap = 'butt';
+    for (let e = STARTER_PAR; e < 14; e += 2) {
       const a = BASE[e], v = BASE[(e + 1) % 14], b = BASE[(e + 2) % 14];
       const din = Math.atan2(v[1] - a[1], v[0] - a[0]), dout = Math.atan2(b[1] - v[1], b[0] - v[0]);
       let turn = dout - din; while (turn <= -Math.PI) turn += 2 * Math.PI; while (turn > Math.PI) turn -= 2 * Math.PI;
       g.beginPath(); g.arc(v[0], v[1], 0.5, dout, dout + Math.PI - turn, false); g.stroke();
     }
     g.fillStyle = ink; g.beginPath(); g.arc(C0[0], C0[1], 0.16, 0, Math.PI * 2); g.fill();
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.restore();
   }
 
   // ---- painting the tiling with the design ----
@@ -1243,12 +1245,12 @@ const FileFormats = (function () {
     paintBase(pctx, view, PW, PH, DPR, true);
   }
 
-  function snapshot(sl) { return { draw: sl.dctx.getImageData(0, 0, TEXN, TEXN), bg: sl.bg, img: sl.img, imgSrc: sl.imgSrc, imgT: Object.assign({}, sl.imgT) }; }
+  function snapshot(sl) { return { draw: sl.dctx.getImageData(0, 0, TEXN, TEXN), bg: sl.bg, img: sl.img, imgSrc: sl.imgSrc, imgT: Object.assign({}, sl.imgT), loops: sl.loops, loopsInk: sl.loopsInk }; }
   function pushUndo(sl) { sl.undo.push(snapshot(sl)); if (sl.undo.length > 10) sl.undo.shift(); }
   function undo() {
     const sl = cur(), s = sl.undo.pop();
     if (!s) { note('Nothing to undo'); return; }
-    sl.dctx.putImageData(s.draw, 0, 0); sl.bg = s.bg; sl.img = s.img; sl.imgSrc = s.imgSrc; sl.imgT = s.imgT;
+    sl.dctx.putImageData(s.draw, 0, 0); sl.bg = s.bg; sl.img = s.img; sl.imgSrc = s.imgSrc; sl.imgT = s.imgT; sl.loops = s.loops; sl.loopsInk = s.loopsInk;
     changed(sl, true); syncStudio();
   }
   function changed(sl, commit) {
@@ -1333,8 +1335,9 @@ const FileFormats = (function () {
     sl.img = c;
     try { sl.imgSrc = c.toDataURL(keepAlpha ? 'image/png' : 'image/jpeg', 0.88); } catch (_) { sl.imgSrc = null; }
     fitPicture(sl); D.tool = 'move';
+    const hadLoops = sl.loops; sl.loops = false;
     changed(sl, true); syncStudio(); syncDesign();
-    note('Picture added. Drag it to place it, or use Scale and Turn');
+    note(hadLoops ? 'Picture added and edge loops switched off. Drag the picture to place it' : 'Picture added. Drag it to place it, or use Scale and Turn');
   }
   function fitPicture(sl) {
     if (!sl.img) return;
@@ -1366,6 +1369,7 @@ const FileFormats = (function () {
   // The turned G halves either share the main design or have their own (slot 1).
   const gLocked = () => D.slot === 1 && !D.ownG;
   function copySlot(from, to) {
+    to.loops = from.loops; to.loopsInk = from.loopsInk;
     to.bg = from.bg; to.img = from.img; to.imgSrc = from.imgSrc; to.imgT = Object.assign({}, from.imgT);
     to.dctx.clearRect(0, 0, TEXN, TEXN); to.dctx.drawImage(from.draw, 0, 0);
     compose(to);
@@ -1403,7 +1407,16 @@ const FileFormats = (function () {
   $('brushColour').addEventListener('input', e => { D.colour = e.target.value; if (D.tool === 'eraser' || D.tool === 'move') D.tool = 'brush'; syncStudio(); });
   $('brushSize').addEventListener('input', e => { D.size = +e.target.value; edRequest(); });
   $('undoBtn').addEventListener('click', () => { if (!gLocked()) undo(); });
-  $('clearBtn').addEventListener('click', () => { if (gLocked()) return; const sl = cur(); pushUndo(sl); sl.dctx.clearRect(0, 0, TEXN, TEXN); changed(sl, true); note('Drawing cleared. Undo brings it back'); });
+  $('clearBtn').addEventListener('click', () => {
+    if (gLocked()) return; const sl = cur(); pushUndo(sl);
+    sl.dctx.clearRect(0, 0, TEXN, TEXN); sl.loops = false;
+    changed(sl, true); syncStudio(); note('Drawing and edge loops cleared. Undo brings them back');
+  });
+  $('tLoops').addEventListener('change', e => {
+    const sl = cur(); if (gLocked()) { e.target.checked = sl.loops; return; }
+    pushUndo(sl); sl.loops = e.target.checked; if (sl.loops) sl.loopsInk = D.colour;
+    changed(sl, true);
+  });
   sliderUndo($('imgScale'), sl => { if (sl.img) sl.imgT.s = +$('imgScale').value / 100; });
   sliderUndo($('imgRot'), sl => { if (sl.img) sl.imgT.r = +$('imgRot').value; });
   sliderUndo($('bgColour'), sl => { sl.bg = $('bgColour').value; });
@@ -1423,6 +1436,7 @@ const FileFormats = (function () {
     press($('slotSeg'), D.slot); press($('toolSeg'), D.tool);
     for (const b of $('swatches').children) b.setAttribute('aria-pressed', String(b.dataset.c === D.colour));
     $('brushColour').value = D.colour; $('brushSize').value = D.size; $('bgColour').value = sl.bg;
+    $('tLoops').checked = !!(gLocked() ? D.slots[0] : sl).loops;
     const hasImg = !!sl.img;
     $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = !hasImg;
     if (hasImg) { $('imgScale').value = Math.round(sl.imgT.s * 100); $('imgRot').value = Math.round(sl.imgT.r); }
@@ -1507,44 +1521,55 @@ const FileFormats = (function () {
     const o = { on: D.on, placement: D.placement, planeSize: D.planeSize, tint: D.tint, grout: D.grout,
                 groutColour: D.groutColour, ownG: D.ownG, colour: D.colour, size: D.size };
     let slots;
-    try { slots = D.slots.map(sl => ({ bg: sl.bg, imgT: sl.imgT, imgSrc: sl.imgSrc, edited: !!sl.edited, draw: sl.draw.toDataURL('image/png') })); } catch (_) { return; }
+    try { slots = D.slots.map(sl => ({ bg: sl.bg, imgT: sl.imgT, imgSrc: sl.imgSrc, edited: !!sl.edited, loops: !!sl.loops, loopsInk: sl.loopsInk, draw: sl.draw.toDataURL('image/png') })); } catch (_) { return; }
     try { localStorage.setItem(LS, JSON.stringify({ o, slots })); }
     catch (_) {
       try { localStorage.setItem(LS, JSON.stringify({ o, slots: slots.map(s => Object.assign({}, s, { imgSrc: null })) })); note('The picture is too large to keep in this browser; the drawing is kept'); } catch (__) {}
     }
   }
-  function matchesStarter(sl) {
-    const t = newSlot(); starter(t, '#8e2f2a', '#f0e2c6', STARTER_PAR);
-    const a = t.dctx.getImageData(0, 0, TEXN, TEXN).data, b = sl.dctx.getImageData(0, 0, TEXN, TEXN).data;
-    let off = 0;
+  // Before 1.3.2 new designs had loops painted into the drawing itself. Erase pixels that match them.
+  function stripLoops(sl, ink) {
+    const t = mk(TEXN), tg = t.getContext('2d', { willReadFrequently: true }); drawLoops(tg, ink);
+    const a = tg.getImageData(0, 0, TEXN, TEXN).data, img = sl.dctx.getImageData(0, 0, TEXN, TEXN), b = img.data;
+    let hit = 0;
     for (let i = 0; i < a.length; i += 4) {
-      if (Math.abs(a[i] - b[i]) > 8 || Math.abs(a[i + 1] - b[i + 1]) > 8 || Math.abs(a[i + 2] - b[i + 2]) > 8 || Math.abs(a[i + 3] - b[i + 3]) > 8) off++;
+      if (a[i + 3] === 0 || b[i + 3] === 0) continue;
+      const faint = a[i + 3] < 64 && b[i + 3] < 64;
+      const same = Math.abs(a[i] - b[i]) <= 24 && Math.abs(a[i + 1] - b[i + 1]) <= 24 && Math.abs(a[i + 2] - b[i + 2]) <= 24 && Math.abs(a[i + 3] - b[i + 3]) <= 40;
+      if (faint || same) { b[i] = b[i + 1] = b[i + 2] = b[i + 3] = 0; hit++; }
     }
-    return off < 400;
+    if (hit) sl.dctx.putImageData(img, 0, 0);
+    return hit;
+  }
+  function inkCount(sl) {
+    const d = sl.dctx.getImageData(0, 0, TEXN, TEXN).data; let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 16) n++;
+    return n;
   }
   function loadImg(src, cb) { const im = new Image(); im.onload = () => cb(im); im.src = src; }
   function loadDesign() {
     D.slots = [newSlot(), newSlot()];
     let data = null;
     try { data = JSON.parse(localStorage.getItem(LS) || 'null'); } catch (_) {}
-    if (!data || !data.slots) {
-      starter(D.slots[0], '#1d4f9a', '#f4efe4', STARTER_PAR);
-      D.slots.forEach(compose); return;
-    }
+    if (!data || !data.slots) { D.slots.forEach(compose); return; }
     const o = data.o || {};
     ['on', 'placement', 'planeSize', 'tint', 'grout', 'groutColour', 'ownG', 'colour', 'size'].forEach(k => { if (o[k] !== undefined) D[k] = o[k]; });
     const after = () => { renderThumbs(); request(); edRequest(); };
     data.slots.forEach((s, k) => {
       const sl = D.slots[k]; if (!sl || !s) return;
       if (s.bg) sl.bg = s.bg; if (s.imgT) sl.imgT = s.imgT;
-      sl.edited = !!s.edited;
+      sl.edited = !!s.edited; sl.loops = !!s.loops; if (s.loopsInk) sl.loopsInk = s.loopsInk;
       compose(sl);
       // Before 1.3.1 the G-halves tab switched on a separate design by itself, holding an untouched starter.
-      const legacyG = k === 1 && s.edited === undefined;
+      const legacyG = k === 1 && s.edited === undefined, legacyLoops = s.loops === undefined;
       const settle = () => {
-        if (!legacyG) return;
-        sl.edited = !(s.bg === '#f0e2c6' && !s.imgSrc && matchesStarter(sl));
-        if (D.ownG && !sl.edited) { D.ownG = false; syncDesign(); save(); }
+        // main designs started with cobalt loops; the G-halves design with oxblood ones, or a copy of the main design
+        if (legacyLoops) { stripLoops(sl, '#1d4f9a'); if (k === 1 && !s.edited) stripLoops(sl, '#8e2f2a'); compose(sl); }
+        if (legacyG) {
+          sl.edited = !(s.bg === '#f0e2c6' && !s.imgSrc && inkCount(sl) < 400);
+          if (D.ownG && !sl.edited) { D.ownG = false; syncDesign(); }
+        }
+        if (legacyLoops || legacyG) save();
       };
       if (s.draw) loadImg(s.draw, im => { sl.dctx.drawImage(im, 0, 0); compose(sl); settle(); after(); });
       else settle();
