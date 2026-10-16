@@ -7,18 +7,19 @@ An interactive explorer for the Spectre, the chiral aperiodic monotile found by 
 <a href="https://sockmonke-rgb.github.io/Spectre-Lab/">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.webp">
-    <img src="docs/screenshot-light.webp" alt="Spectre Lab: a patch of about 4,400 Spectre tiles coloured by hexagon type, beside the controls panel">
+    <img src="docs/screenshot-light.webp" alt="Spectre Lab in Infinite mode: the Spectre tiling coloured by hexagon type, filling the view, beside the controls panel">
   </picture>
 </a>
 
 ## What it does
 
-- **Grows a real Spectre tiling** by substituting nine hexagon types, from 1 to 5 steps (9 to about 35,000 tiles). Seeds that contain themselves keep each patch exactly inside the next, so adding a step grows the tiling around what you are looking at. A random ancestry option makes up the hierarchy one level at a time, weighted by how common each hexagon type is.
+- **An infinite Spectre tiling.** In Infinite mode the tiling is built around the view as you pan and zoom, so it never runs out: larger hexagons are added above as you go further, and only the area near the view is kept in memory.
+- **Or a finished patch** of 1 to 5 substitution steps (9 to about 35,000 tiles) in Patch mode. Seeds that contain themselves keep each patch exactly inside the next, so adding a step grows the tiling around what you are looking at. A random ancestry option makes up the hierarchy one level at a time, weighted by how common each hexagon type is.
 - **Uses exact geometry.** Every vertex is an integer combination of 1, d, d², d³ with d = e^(iπ/6).
 - **Colours and structure:** hexagon type at any order, a proper four-colouring, rotation, or plain; supertile outlines and letters; curved edges that show the odd-to-even rule that makes the tile strongly chiral.
 - **Combinatorial coordinates:** tap a tile to see which child it is of which hexagon, all the way to the root, and walk across any of its 14 edges.
 - **Tile studio:** paint one Spectre or place a picture on it, then tessellate it. The design can turn with each tile, stay upright, or become one picture spread under the whole tiling. Tint, grout and a separate design for the turned G halves are optional.
-- **Export** a PNG (2,000 to 8,000 px on the long edge, optionally transparent) or a one-page PDF (A4, A3 or Letter, about 300 dpi).
+- **Export** a PNG (2,000 to 8,000 px on the long edge, optionally transparent) or a one-page PDF (A4, A3 or Letter, about 300 dpi), of the current view, the whole patch (Patch mode) or a single tile.
 
 | Design one tile in the tile studio | and every Spectre in the tiling takes it on |
 | --- | --- |

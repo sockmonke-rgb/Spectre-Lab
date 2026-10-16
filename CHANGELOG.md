@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.0 — 2026-10-16
+
+- **Infinite mode**, now the default: the tiling is built around the view as you pan and zoom, so it has no edge. Larger hexagons are added above as you go further out, and only the area near the view is kept, so it stays quick.
+  - Mode switch in the panel: Infinite or Patch. Patch is the finished patch of 1 to 5 substitution steps, as before.
+  - Colour by hexagon type and supertile outlines go up to the 6th order.
+  - Fit becomes Home, back to where the tiling started. Export offers Current view and Single tile.
+  - Walking across edges never reaches a rim; the tile you selected stays selected as the area reloads, and the four-colouring keeps its colours.
+  - Seeds whose first patch sits on the edge of every larger hexagon never fill the plane, so they are marked "patch only". D inside D, F inside F (child 0) and random ancestry work in both modes.
+  - How far you can zoom out adapts to how fast the device builds the tiling, so panning stays smooth on phones.
+- Faster drawing of large tilings. Preparing the shapes for 30,000 tiles took over 2 seconds and now takes about 25 ms, so a 5-step patch also changes colour or outline almost at once. Shapes are drawn in chunks, chunks off screen are skipped, and building a patch is about 40% quicker.
+
 ## 1.8.3 — 2026-10-16
 
 - A "Support Spectre Lab" link next to the README link and in How it works, to a pay-what-you-like Stripe page.

@@ -90,3 +90,53 @@ test('limiting frequencies sum to one', () => {
   assert.ok(Math.abs(total - 1) < 1e-9);
   assert.ok(Math.abs(C.FREQ.F - 0.2218) < 1e-3);
 });
+
+// ---------- infinite view ----------
+const tkey = T => T.t.join(',') + '|' + T.k + '|' + (T.f ? 1 : 0);
+
+test('applyF matches exact arithmetic', () => {
+  const T = C.compose(C.levelTrs[3][5], C.inverse(C.levelTrs[2][1]));
+  for (const p of C.PTS) {
+    const [ex, ey] = C.toXY(C.apply(T, p)), [x, y] = C.toXY(p), [fx, fy] = C.applyF(T, x, y);
+    assert.ok(Math.hypot(ex - fx, ey - fy) < 1e-9);
+  }
+});
+
+test('a region as large as the patch rebuilds the whole patch', () => {
+  const B = C.buildRegion(D5, 4, [-1e9, -1e9, 1e9, 1e9]), A = patch(4);
+  assert.equal(B.N, A.N);
+  const ka = new Set(A.tiles.T.map(tkey));
+  for (const T of B.tiles.T) assert.ok(ka.has(tkey(T)));
+});
+
+test('a small region keeps every Spectre that touches it, and little else', () => {
+  const A = patch(5), rect = [60, -70, 130, -20], B = C.buildRegion(D5, 5, rect), kb = new Set(B.tiles.T.map(tkey));
+  let touching = 0;
+  for (let i = 0; i < A.N; i++) {
+    const b = i * 4;
+    if (A.bbox[b] <= rect[2] && A.bbox[b + 2] >= rect[0] && A.bbox[b + 1] <= rect[3] && A.bbox[b + 3] >= rect[1]) { touching++; assert.ok(kb.has(tkey(A.tiles.T[i]))); }
+  }
+  assert.ok(touching > 100 && B.N < touching * 1.6, `${B.N} built for ${touching} touching`);
+});
+
+test('partly built hexagons keep the centroid of the whole hexagon', () => {
+  const A = patch(4), B = C.buildRegion(D5, 4, [-10, -10, 10, 10]);
+  // the root is the same hexagon in both; its centroid must agree even though B holds only a corner of it
+  assert.ok(Math.hypot(A.nodeCen[0] - B.nodeCen[0], A.nodeCen[1] - B.nodeCen[1]) < 1e-6);
+});
+
+test('D inside D grows in every direction, so a far rectangle is covered at some level', () => {
+  for (const [x, y] of [[2000, 0], [0, -2000], [-1500, 1500]]) {
+    const n = C.levelCovering(D5, [x - 30, y - 30, x + 30, y + 30], 1, 30);
+    assert.ok(n > 5 && n < 15, `level ${n}`);
+    const R = C.buildRegion(D5, n, [x - 30, y - 30, x + 30, y + 30]);
+    assert.ok(R.N > 50);
+  }
+});
+
+test('a seed on the edge of its parent never fills the plane', () => {
+  // Y inside Y at child 1 keeps its first patch on the rim of every larger Y, so one side is never reached
+  const Y1 = C.fixedChain('Y', 5);
+  const misses = [[400, 0], [0, 400], [-400, 0], [0, -400]].filter(([x, y]) => C.levelCovering(Y1, [x - 20, y - 20, x + 20, y + 20], 1, 20) < 0);
+  assert.ok(misses.length > 0);
+});

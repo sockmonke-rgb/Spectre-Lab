@@ -194,7 +194,9 @@ const SpectreCore = (function () {
       const key = (Math.round(mx * 256) + 8388608) * 16777216 + (Math.round(my * 256) + 8388608);
       const o = map.get(key);
       if (o === undefined) map.set(key, i * 14 + e);
-      else { const ti = (o / 14) | 0, te = o % 14; nbT[i*14+e] = ti; nbE[i*14+e] = te; nbT[o] = i; nbE[o] = e; }
+      // an edge has two sides, so once matched it can leave the map: the map then holds only the
+      // open edges at the front of the search, which keeps it small (tiles come in nearby order)
+      else { const ti = (o / 14) | 0, te = o % 14; nbT[i*14+e] = ti; nbE[i*14+e] = te; nbT[o] = i; nbE[o] = e; map.delete(key); }
     }
     // node bboxes/centroids
     const NN = nodes.type.length;
@@ -211,6 +213,132 @@ const SpectreCore = (function () {
       nc[v*2] = cx / (e - s); nc[v*2+1] = cy / (e - s);
     }
     return { n, N, nodes, tiles, xy, tk, tf, bbox, cen, anc, nbT, nbE, nodeBox: nb, nodeCen: nc };
+  }
+
+  // ---------- infinite view: build only what touches a rectangle ----------
+  // Float version of apply() for points in the plane: reflect (x -> -x) if f, turn by k·30°, then translate.
+  const COSK = [], SINK = [];
+  for (let k = 0; k < 12; k++) { COSK.push(Math.cos(k * Math.PI / 6)); SINK.push(Math.sin(k * Math.PI / 6)); }
+  function applyF(T, x, y) {
+    const px = T.f ? -x : x, c = COSK[T.k], s = SINK[T.k], t = toXY(T.t);
+    return [t[0] + c * px - s * y, t[1] + s * px + c * y];
+  }
+  // circ[L][type] = [cx, cy, r]: a circle round every Spectre of a level-L hexagon, in that hexagon's own frame.
+  // full[L][type] = [count, sum of tile centroids x, y]: for the centroid of a whole hexagon, even when only part is built.
+  const circ = [], full = [];
+  const PAD = 0.6; // room for curved edges
+  function ensureCircles(n) {
+    ensureLevels(n);
+    if (!circ.length) {
+      const c0 = {}, f0 = {};
+      const vertsOf = T => PTS.map(p => toXY(apply(T, p)));
+      for (const t of TYPES) {
+        const vs = vertsOf(ID).concat(t === 'G' ? vertsOf(G1) : []);
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const [x, y] of vs) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        let r = 0; for (const [x, y] of vs) r = Math.max(r, Math.hypot(x - cx, y - cy));
+        c0[t] = [cx, cy, r + PAD];
+        const tiles = t === 'G' ? [ID, G1] : [ID];
+        let sx = 0, sy = 0;
+        for (const T of tiles) { const v = vertsOf(T); for (const [x, y] of v) { sx += x / 14; sy += y / 14; } }
+        f0[t] = [tiles.length, sx, sy];
+      }
+      circ.push(c0); full.push(f0);
+    }
+    while (circ.length <= n) {
+      const L = circ.length, trs = levelTrs[L], cl = {}, fl = {};
+      for (const t of TYPES) {
+        const kids = [];
+        let cnt = 0, sx = 0, sy = 0;
+        RULES[t].forEach((c, s) => {
+          if (!c) return;
+          const [ccx, ccy, cr] = circ[L - 1][c], [x, y] = applyF(trs[s], ccx, ccy);
+          kids.push([x, y, cr]);
+          const [n0, fx, fy] = full[L - 1][c], [gx, gy] = applyF(trs[s], fx / n0, fy / n0);
+          cnt += n0; sx += gx * n0; sy += gy * n0;
+        });
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const [x, y, r] of kids) { x0 = Math.min(x0, x - r); y0 = Math.min(y0, y - r); x1 = Math.max(x1, x + r); y1 = Math.max(y1, y + r); }
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        let r = 0; for (const [x, y, kr] of kids) r = Math.max(r, Math.hypot(x - cx, y - cy) + kr);
+        cl[t] = [cx, cy, r]; fl[t] = [cnt, sx, sy];
+      }
+      circ.push(cl); full.push(fl);
+    }
+  }
+  const circleMeetsRect = (x, y, r, R) => !(x + r < R[0] || x - r > R[2] || y + r < R[1] || y - r > R[3]);
+
+  // Like build(), but only the hexagons whose circle meets rect [x0, y0, x1, y1] are expanded.
+  // Hexagons that are only partly built get their true centroid and an approximate box,
+  // so labels sit where the whole hexagon is.
+  function buildRegion(chain, n, rect) {
+    ensureCircles(n);
+    const nodes = { type: [], order: [], parent: [], tslot: [], start: [], end: [] };
+    const tiles = { T: [], node: [], sub: [] };
+    const partial = [];   // [node id, type, L, M]
+    function rec(type, L, M, parent, slot) {
+      const [cx, cy, r] = circ[L][type], [x, y] = applyF(M, cx, cy);
+      if (!circleMeetsRect(x, y, r, rect)) return false;
+      const id = nodes.type.length;
+      nodes.type.push(type); nodes.order.push(L + 1); nodes.parent.push(parent);
+      nodes.tslot.push(slot < 0 ? -1 : SLOT_TO_T[slot]);
+      nodes.start.push(tiles.T.length); nodes.end.push(0);
+      let whole = true;
+      if (L === 0) {
+        tiles.T.push(M); tiles.node.push(id); tiles.sub.push(0);
+        if (type === 'G') { tiles.T.push(compose(M, G1)); tiles.node.push(id); tiles.sub.push(1); }
+      } else {
+        const rl = RULES[type], trs = levelTrs[L];
+        for (let s = 0; s < 8; s++) if (rl[s] && !rec(rl[s], L - 1, compose(M, trs[s]), id, s)) whole = false;
+      }
+      nodes.end[id] = tiles.T.length;
+      if (!whole) partial.push([id, type, L, M]);
+      return true;
+    }
+    rec(rootType(chain, n), n, rootPlacement(chain, n), -1, -1);
+    const P = finish(nodes, tiles, n);
+    for (const [id, type, L, M] of partial) {
+      const [cnt, fx, fy] = full[L][type], [x, y] = applyF(M, fx / cnt, fy / cnt), r = circ[L][type][2] * 0.62;
+      P.nodeCen[id * 2] = x; P.nodeCen[id * 2 + 1] = y;
+      P.nodeBox[id * 4] = x - r; P.nodeBox[id * 4 + 1] = y - r; P.nodeBox[id * 4 + 2] = x + r; P.nodeBox[id * 4 + 3] = y + r;
+    }
+    P.region = rect.slice();
+    return P;
+  }
+
+  // Is point (x, y) inside some Spectre of the level-n root? Descends only into circles that contain it.
+  function pointInTile(T, x, y) {
+    const base = BASEF[(T.f ? 12 : 0) + T.k], [ox, oy] = toXY(T.t);
+    let inside = false;
+    for (let a = 0, c = 13; a < 14; c = a++) {
+      const xa = ox + base[a][0], ya = oy + base[a][1], xc = ox + base[c][0], yc = oy + base[c][1];
+      if ((ya > y) !== (yc > y) && x < (xc - xa) * (y - ya) / (yc - ya) + xa) inside = !inside;
+    }
+    return inside;
+  }
+  function covered(chain, n, x, y) {
+    ensureCircles(n);
+    function rec(type, L, M) {
+      const [cx, cy, r] = circ[L][type], [px, py] = applyF(M, cx, cy);
+      if ((px - x) * (px - x) + (py - y) * (py - y) > r * r) return false;
+      if (L === 0) return pointInTile(M, x, y) || (type === 'G' && pointInTile(compose(M, G1), x, y));
+      const rl = RULES[type], trs = levelTrs[L];
+      for (let s = 0; s < 8; s++) if (rl[s] && rec(rl[s], L - 1, compose(M, trs[s]))) return true;
+      return false;
+    }
+    return rec(rootType(chain, n), n, rootPlacement(chain, n));
+  }
+  // The smallest level >= from whose root tiles the whole rectangle, checked on a grid of points.
+  // Returns -1 if even level max leaves part of it uncovered (a seed that never fills the plane).
+  function levelCovering(chain, rect, from, max) {
+    const pts = [], G = 9;
+    for (let a = 0; a <= G; a++) for (let b = 0; b <= G; b++) {
+      // nudge off the grid so a sample never sits exactly on a tile edge
+      pts.push([rect[0] + (rect[2] - rect[0]) * (a + 0.013) / (G + 0.026), rect[1] + (rect[3] - rect[1]) * (b + 0.017) / (G + 0.034)]);
+    }
+    for (let n = Math.max(1, from); n <= max; n++) if (pts.every(([x, y]) => covered(chain, n, x, y))) return n;
+    return -1;
   }
 
   // Tatham-style numbering of Spectre edges (his figure runs the other way round the outline).
@@ -280,6 +408,7 @@ const SpectreCore = (function () {
   }
 
   return { DV, PTS, TYPES, GREEK, GREEK_NAME, RULES, SLOT_TO_T, T_TO_SLOT, FREQ, toXY, apply, compose, inverse,
-           fixedChain, randomChain, rootType, build, tEdge, mEdge, fourColour, levelTrs, ensureLevels, ID, REFL };
+           fixedChain, randomChain, rootType, build, tEdge, mEdge, fourColour, levelTrs, ensureLevels, ID, REFL,
+           applyF, buildRegion, covered, levelCovering, ensureCircles, circles: circ };
 })();
 if (typeof module !== 'undefined') module.exports = SpectreCore;

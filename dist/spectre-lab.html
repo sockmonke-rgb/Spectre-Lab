@@ -352,14 +352,15 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <div>
         <h1>Spectre Lab</h1>
         <p class="sub">The chiral aperiodic monotile, grown from nine hexagons and addressed by combinatorial coordinates.</p>
-        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.8.3</span>c913297 · 2026-10-16 20:56 UTC</p>
+        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.9.0</span>bc4c2ea · 2026-10-16 22:26 UTC</p>
         <p class="links"><a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source on GitHub ↗</a><a href="https://buy.stripe.com/eVq5kC9rBalU61la739Zm00" target="_blank" rel="noopener">Support Spectre Lab ↗</a></p>
       </div>
     </header>
 
     <section class="group" aria-labelledby="h-patch">
-      <h2 class="eyebrow" id="h-patch">Patch</h2>
-      <div class="row"><span class="lbl" id="l-depth">Substitution steps</span><div class="seg" id="depthSeg" role="group" aria-labelledby="l-depth"></div></div>
+      <h2 class="eyebrow" id="h-patch">Tiling</h2>
+      <div class="row"><span class="lbl" id="l-mode">Mode</span><div class="seg" id="modeSeg" role="group" aria-labelledby="l-mode"></div></div>
+      <div class="row" id="depthRow"><span class="lbl" id="l-depth">Substitution steps</span><div class="seg" id="depthSeg" role="group" aria-labelledby="l-depth"></div></div>
       <div class="row">
         <label class="lbl" for="seedSel">Seed (which hexagon sits inside itself)</label>
         <div class="seedwrap"><select id="seedSel"></select><button class="btn" id="reroll" type="button">New ancestry</button></div>
@@ -444,7 +445,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <p>Positions are exact. Each vertex is <span class="mono">a₀ + a₁d + a₂d² + a₃d³</span> with integer coefficients and <span class="mono">d = e<sup>iπ/6</sup></span>. Curved edges bulge out on even edges and in on odd ones; every shared edge still matches, which is the odd-to-even rule that makes the tile strongly chiral.</p>
       <p>The tile studio paints one Spectre. Every tile in the patch reuses that painting, moved and turned to fit, and the turned G halves can carry a design of their own. Your design stays in this browser.</p>
       <p>Sources: <a href="https://arxiv.org/abs/2305.17743" target="_blank" rel="noopener">A chiral aperiodic monotile</a> (Smith, Myers, Kaplan, Goodman-Strauss, 2023) and Simon Tatham's <a href="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-spectre/" target="_blank" rel="noopener">Combinatorial coordinates for the aperiodic Spectre tiling</a>. Hexagon letters, child numbers and edge numbers follow Tatham.</p>
-      <p>Spectre Lab v1.8.3 (build c913297) is open source under the MIT License. The <a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source code</a> are on GitHub. If you enjoy it, you can <a href="https://buy.stripe.com/eVq5kC9rBalU61la739Zm00" target="_blank" rel="noopener">support Spectre Lab</a> with whatever you like.</p>
+      <p>Spectre Lab v1.9.0 (build bc4c2ea) is open source under the MIT License. The <a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source code</a> are on GitHub. If you enjoy it, you can <a href="https://buy.stripe.com/eVq5kC9rBalU61la739Zm00" target="_blank" rel="noopener">support Spectre Lab</a> with whatever you like.</p>
     </section>
   </aside>
 </main>
@@ -654,7 +655,9 @@ const SpectreCore = (function () {
       const key = (Math.round(mx * 256) + 8388608) * 16777216 + (Math.round(my * 256) + 8388608);
       const o = map.get(key);
       if (o === undefined) map.set(key, i * 14 + e);
-      else { const ti = (o / 14) | 0, te = o % 14; nbT[i*14+e] = ti; nbE[i*14+e] = te; nbT[o] = i; nbE[o] = e; }
+      // an edge has two sides, so once matched it can leave the map: the map then holds only the
+      // open edges at the front of the search, which keeps it small (tiles come in nearby order)
+      else { const ti = (o / 14) | 0, te = o % 14; nbT[i*14+e] = ti; nbE[i*14+e] = te; nbT[o] = i; nbE[o] = e; map.delete(key); }
     }
     // node bboxes/centroids
     const NN = nodes.type.length;
@@ -671,6 +674,132 @@ const SpectreCore = (function () {
       nc[v*2] = cx / (e - s); nc[v*2+1] = cy / (e - s);
     }
     return { n, N, nodes, tiles, xy, tk, tf, bbox, cen, anc, nbT, nbE, nodeBox: nb, nodeCen: nc };
+  }
+
+  // ---------- infinite view: build only what touches a rectangle ----------
+  // Float version of apply() for points in the plane: reflect (x -> -x) if f, turn by k·30°, then translate.
+  const COSK = [], SINK = [];
+  for (let k = 0; k < 12; k++) { COSK.push(Math.cos(k * Math.PI / 6)); SINK.push(Math.sin(k * Math.PI / 6)); }
+  function applyF(T, x, y) {
+    const px = T.f ? -x : x, c = COSK[T.k], s = SINK[T.k], t = toXY(T.t);
+    return [t[0] + c * px - s * y, t[1] + s * px + c * y];
+  }
+  // circ[L][type] = [cx, cy, r]: a circle round every Spectre of a level-L hexagon, in that hexagon's own frame.
+  // full[L][type] = [count, sum of tile centroids x, y]: for the centroid of a whole hexagon, even when only part is built.
+  const circ = [], full = [];
+  const PAD = 0.6; // room for curved edges
+  function ensureCircles(n) {
+    ensureLevels(n);
+    if (!circ.length) {
+      const c0 = {}, f0 = {};
+      const vertsOf = T => PTS.map(p => toXY(apply(T, p)));
+      for (const t of TYPES) {
+        const vs = vertsOf(ID).concat(t === 'G' ? vertsOf(G1) : []);
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const [x, y] of vs) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        let r = 0; for (const [x, y] of vs) r = Math.max(r, Math.hypot(x - cx, y - cy));
+        c0[t] = [cx, cy, r + PAD];
+        const tiles = t === 'G' ? [ID, G1] : [ID];
+        let sx = 0, sy = 0;
+        for (const T of tiles) { const v = vertsOf(T); for (const [x, y] of v) { sx += x / 14; sy += y / 14; } }
+        f0[t] = [tiles.length, sx, sy];
+      }
+      circ.push(c0); full.push(f0);
+    }
+    while (circ.length <= n) {
+      const L = circ.length, trs = levelTrs[L], cl = {}, fl = {};
+      for (const t of TYPES) {
+        const kids = [];
+        let cnt = 0, sx = 0, sy = 0;
+        RULES[t].forEach((c, s) => {
+          if (!c) return;
+          const [ccx, ccy, cr] = circ[L - 1][c], [x, y] = applyF(trs[s], ccx, ccy);
+          kids.push([x, y, cr]);
+          const [n0, fx, fy] = full[L - 1][c], [gx, gy] = applyF(trs[s], fx / n0, fy / n0);
+          cnt += n0; sx += gx * n0; sy += gy * n0;
+        });
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const [x, y, r] of kids) { x0 = Math.min(x0, x - r); y0 = Math.min(y0, y - r); x1 = Math.max(x1, x + r); y1 = Math.max(y1, y + r); }
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        let r = 0; for (const [x, y, kr] of kids) r = Math.max(r, Math.hypot(x - cx, y - cy) + kr);
+        cl[t] = [cx, cy, r]; fl[t] = [cnt, sx, sy];
+      }
+      circ.push(cl); full.push(fl);
+    }
+  }
+  const circleMeetsRect = (x, y, r, R) => !(x + r < R[0] || x - r > R[2] || y + r < R[1] || y - r > R[3]);
+
+  // Like build(), but only the hexagons whose circle meets rect [x0, y0, x1, y1] are expanded.
+  // Hexagons that are only partly built get their true centroid and an approximate box,
+  // so labels sit where the whole hexagon is.
+  function buildRegion(chain, n, rect) {
+    ensureCircles(n);
+    const nodes = { type: [], order: [], parent: [], tslot: [], start: [], end: [] };
+    const tiles = { T: [], node: [], sub: [] };
+    const partial = [];   // [node id, type, L, M]
+    function rec(type, L, M, parent, slot) {
+      const [cx, cy, r] = circ[L][type], [x, y] = applyF(M, cx, cy);
+      if (!circleMeetsRect(x, y, r, rect)) return false;
+      const id = nodes.type.length;
+      nodes.type.push(type); nodes.order.push(L + 1); nodes.parent.push(parent);
+      nodes.tslot.push(slot < 0 ? -1 : SLOT_TO_T[slot]);
+      nodes.start.push(tiles.T.length); nodes.end.push(0);
+      let whole = true;
+      if (L === 0) {
+        tiles.T.push(M); tiles.node.push(id); tiles.sub.push(0);
+        if (type === 'G') { tiles.T.push(compose(M, G1)); tiles.node.push(id); tiles.sub.push(1); }
+      } else {
+        const rl = RULES[type], trs = levelTrs[L];
+        for (let s = 0; s < 8; s++) if (rl[s] && !rec(rl[s], L - 1, compose(M, trs[s]), id, s)) whole = false;
+      }
+      nodes.end[id] = tiles.T.length;
+      if (!whole) partial.push([id, type, L, M]);
+      return true;
+    }
+    rec(rootType(chain, n), n, rootPlacement(chain, n), -1, -1);
+    const P = finish(nodes, tiles, n);
+    for (const [id, type, L, M] of partial) {
+      const [cnt, fx, fy] = full[L][type], [x, y] = applyF(M, fx / cnt, fy / cnt), r = circ[L][type][2] * 0.62;
+      P.nodeCen[id * 2] = x; P.nodeCen[id * 2 + 1] = y;
+      P.nodeBox[id * 4] = x - r; P.nodeBox[id * 4 + 1] = y - r; P.nodeBox[id * 4 + 2] = x + r; P.nodeBox[id * 4 + 3] = y + r;
+    }
+    P.region = rect.slice();
+    return P;
+  }
+
+  // Is point (x, y) inside some Spectre of the level-n root? Descends only into circles that contain it.
+  function pointInTile(T, x, y) {
+    const base = BASEF[(T.f ? 12 : 0) + T.k], [ox, oy] = toXY(T.t);
+    let inside = false;
+    for (let a = 0, c = 13; a < 14; c = a++) {
+      const xa = ox + base[a][0], ya = oy + base[a][1], xc = ox + base[c][0], yc = oy + base[c][1];
+      if ((ya > y) !== (yc > y) && x < (xc - xa) * (y - ya) / (yc - ya) + xa) inside = !inside;
+    }
+    return inside;
+  }
+  function covered(chain, n, x, y) {
+    ensureCircles(n);
+    function rec(type, L, M) {
+      const [cx, cy, r] = circ[L][type], [px, py] = applyF(M, cx, cy);
+      if ((px - x) * (px - x) + (py - y) * (py - y) > r * r) return false;
+      if (L === 0) return pointInTile(M, x, y) || (type === 'G' && pointInTile(compose(M, G1), x, y));
+      const rl = RULES[type], trs = levelTrs[L];
+      for (let s = 0; s < 8; s++) if (rl[s] && rec(rl[s], L - 1, compose(M, trs[s]))) return true;
+      return false;
+    }
+    return rec(rootType(chain, n), n, rootPlacement(chain, n));
+  }
+  // The smallest level >= from whose root tiles the whole rectangle, checked on a grid of points.
+  // Returns -1 if even level max leaves part of it uncovered (a seed that never fills the plane).
+  function levelCovering(chain, rect, from, max) {
+    const pts = [], G = 9;
+    for (let a = 0; a <= G; a++) for (let b = 0; b <= G; b++) {
+      // nudge off the grid so a sample never sits exactly on a tile edge
+      pts.push([rect[0] + (rect[2] - rect[0]) * (a + 0.013) / (G + 0.026), rect[1] + (rect[3] - rect[1]) * (b + 0.017) / (G + 0.034)]);
+    }
+    for (let n = Math.max(1, from); n <= max; n++) if (pts.every(([x, y]) => covered(chain, n, x, y))) return n;
+    return -1;
   }
 
   // Tatham-style numbering of Spectre edges (his figure runs the other way round the outline).
@@ -740,7 +869,8 @@ const SpectreCore = (function () {
   }
 
   return { DV, PTS, TYPES, GREEK, GREEK_NAME, RULES, SLOT_TO_T, T_TO_SLOT, FREQ, toXY, apply, compose, inverse,
-           fixedChain, randomChain, rootType, build, tEdge, mEdge, fourColour, levelTrs, ensureLevels, ID, REFL };
+           fixedChain, randomChain, rootType, build, tEdge, mEdge, fourColour, levelTrs, ensureLevels, ID, REFL,
+           applyF, buildRegion, covered, levelCovering, ensureCircles, circles: circ };
 })();
 
 </script>
@@ -847,7 +977,7 @@ const FileFormats = (function () {
   'use strict';
   const C = SpectreCore;
   // Filled in by scripts/build.js: the version from package.json, a hash of the sources, and the build time.
-  const BUILD = { version: '1.8.3', hash: 'c913297', date: '2026-10-16 20:56 UTC' };
+  const BUILD = { version: '1.9.0', hash: 'bc4c2ea', date: '2026-10-16 22:26 UTC' };
   try { console.info(`Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})`); } catch (_) {}
   const $ = id => document.getElementById(id);
   const MAXD = 5;
@@ -878,8 +1008,20 @@ const FileFormats = (function () {
     { id: 'R', label: 'Random ancestry', short: 'random', make: () => C.randomChain(mulberry(S.rseed)) }
   ];
 
-  const S = { depth: 4, seed: 'D5', rseed: 2718, colour: 'type', torder: 1, outline: 2,
+  const S = { mode: 'infinite', depth: 4, seed: 'D5', rseed: 2718, colour: 'type', torder: 1, outline: 2,
               letters: true, curved: false, edgeNums: true, sel: -1 };
+  // Infinite mode builds only the area around the view and adds levels above as you go further.
+  // Only seeds whose first patch sits inside every larger hexagon (not on its edge) grow in every
+  // direction, so only they fill the whole plane; the others stay in patch mode.
+  const INF_SEEDS = new Set(['D5', 'F0', 'R']);
+  const INF_MAXN = 30, INF_ORDERS = 6;        // deepest level; hexagon orders offered for colour and outlines
+  const TILE_AREA = 8.196;                      // one Spectre, edge length 1
+  // How much to load is set by how fast this device builds: each load should take about LOAD_MS,
+  // and the zoom-out limit keeps about half of a load on screen. A fast computer gets the full range;
+  // a slower phone loads less and stops zooming out a little sooner, so panning stays smooth.
+  const LOAD_MS = 150, REGION_MIN = 6000, REGION_CAP = 30000;
+  let msPerTile = 0.004, regionMax = REGION_CAP;
+  let regionN = 0, selKey = null, fourRef = null;
   const V = { s: 10, ox: 0, oy: 0 };
   let P = null, chain = null, cache = {};
   let hoverNode = -1, pinNode = -1, hoverEdge = -1, cameEdge = -1, lastStep = null;
@@ -951,13 +1093,13 @@ const FileFormats = (function () {
     else if (style === ':') { dot(n / 4, n / 4, 1.3 * scale); dot(3 * n / 4, 3 * n / 4, 1.3 * scale); }
     patCache.set(key, c); return c;
   }
-  function paintPatterns(g, view, dpr, fp, pal) {
+  function paintPatterns(g, view, dpr, fp, pal, r) {
     const styles = PAT_STYLES[S.colour]; if (!styles) return;
     const K = view.s * dpr, m = new DOMMatrix([1 / K, 0, 0, -1 / K, -view.ox * dpr / K, view.oy * dpr / K]);
     for (let c = 0; c < fp.length; c++) {
       if (!fp[c] || !styles[c]) continue;
       const p = g.createPattern(patternTile(styles[c], inkFor(pal[c]), dpr), 'repeat');
-      p.setTransform(m); g.fillStyle = p; g.fill(fp[c]);
+      p.setTransform(m); g.fillStyle = p; eachChunk(fp[c], r, q => g.fill(q));
     }
   }
   // legend swatch: the colour, plus the pattern when patterns are on
@@ -981,7 +1123,10 @@ const FileFormats = (function () {
     CORE = [cx / core.N, cy / core.N];
   }
   function build() {
-    P = C.build(chain, S.depth);
+    if (S.mode === 'infinite') { loadRegion(); return; }
+    P = C.build(chain, S.depth); prep();
+  }
+  function prep() {
     cache = {}; hoverNode = -1; pinNode = -1; hoverEdge = -1;
     const byOrder = [];
     for (let v = 0; v < P.nodes.type.length; v++) { const o = P.nodes.order[v]; (byOrder[o] || (byOrder[o] = [])).push(v); }
@@ -995,7 +1140,58 @@ const FileFormats = (function () {
     P.box = [x0, y0, x1, y1];
   }
   const tileKey = i => { const T = P.tiles.T[i]; return T.t.join(',') + '|' + T.k + '|' + (T.f ? 1 : 0); };
-  function findKey(key) { for (let i = 0; i < P.N; i++) if (tileKey(i) === key) return i; return -1; }
+  function findKey(key) {
+    if (!P.keyIndex) { const m = new Map(); for (let i = 0; i < P.N; i++) m.set(tileKey(i), i); P.keyIndex = m; }
+    const i = P.keyIndex.get(key); return i === undefined ? -1 : i;
+  }
+
+  // ---------- infinite mode: the loaded area follows the view ----------
+  // World rectangle of the view, grown by m times its size on each side.
+  function viewRect(m) {
+    const x0 = -V.ox / V.s, x1 = (W - V.ox) / V.s, y1 = V.oy / V.s, y0 = (V.oy - H) / V.s;
+    const dx = (x1 - x0) * m, dy = (y1 - y0) * m;
+    return [x0 - dx, y0 - dy, x1 + dx, y1 + dy];
+  }
+  // Margin round the view: generous when zoomed in, slimmer when zoomed out, so the loaded area stays near REGION_MAX.
+  function regionMargin() {
+    const vis = W * H / (V.s * V.s * TILE_AREA);
+    return clamp((Math.sqrt(regionMax / Math.max(vis, 1)) - 1) / 2, 0.12, 0.6);
+  }
+  const minScale = () => S.mode === 'infinite' && W ? Math.sqrt(W * H / (regionMax / 2 * TILE_AREA)) : 0.4;
+  // keep the view inside the zoom-out limit, zooming about the centre (no redraw: used while drawing)
+  function clampZoom() {
+    const m = minScale(); if (V.s >= m) return;
+    const g = m / V.s; V.ox = W / 2 - (W / 2 - V.ox) * g; V.oy = H / 2 - (H / 2 - V.oy) * g; V.s = m;
+  }
+  function regionStale() {
+    if (S.mode !== 'infinite' || !P || !P.region || !W) return false;
+    const v = viewRect(0), R = P.region, vw = v[2] - v[0], vh = v[3] - v[1], pad = 0.04;
+    if (v[0] - vw * pad < R[0] || v[2] + vw * pad > R[2] || v[1] - vh * pad < R[1] || v[3] + vh * pad > R[3]) return true;
+    // zoomed far in: reload a smaller area so later redraws stay quick
+    return P.N > 6000 && (R[2] - R[0]) * (R[3] - R[1]) > 30 * vw * vh;
+  }
+  function loadRegion() {
+    const keep = P && S.sel >= 0 ? tileKey(S.sel) : selKey;
+    // remember the four-colouring on screen, so the new area can use the same three colours
+    if (P && cache.four && W) { fourRef = new Map(); const f = cache.four; for (const i of visibleTiles(V, W, H)) fourRef.set(tileKey(i), f[i]); }
+    clampZoom();
+    const t0 = performance.now();
+    const rect = viewRect(regionMargin());
+    // at least INF_ORDERS levels, so every hexagon order offered for colour and outlines exists
+    let n = C.levelCovering(chain, rect, Math.max(regionN, INF_ORDERS - 1), INF_MAXN);
+    if (n < 0) n = Math.max(regionN, INF_MAXN);
+    regionN = n;
+    P = C.buildRegion(chain, n, rect); prep();
+    // learn this device's speed from loads big enough to measure
+    if (P.N > 1500) {
+      msPerTile = 0.6 * msPerTile + 0.4 * (performance.now() - t0) / P.N;
+      regionMax = clamp(Math.round(LOAD_MS / msPerTile), REGION_MIN, REGION_CAP);
+    }
+    selKey = keep;
+    S.sel = keep ? findKey(keep) : -1;
+    if (S.sel < 0) { lastStep = null; cameEdge = -1; }
+  }
+  function afterRegion() { syncControls(); renderInspector(-1); renderCensus(); syncExport(); }
 
   function colourIndex() {
     const key = 'ci|' + S.colour + '|' + S.torder;
@@ -1011,7 +1207,20 @@ const FileFormats = (function () {
     }
     return cache[key] = out;
   }
-  function fourCol() { return cache.four || (cache.four = C.fourColour(P)); }
+  function fourCol() {
+    if (cache.four) return cache.four;
+    const out = C.fourColour(P);
+    // In infinite mode each loaded area is coloured afresh; the three hexagon colours are unique up to
+    // swapping, so swap them to agree with what was on screen before.
+    if (S.mode === 'infinite' && fourRef && fourRef.size) {
+      const cnt = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      for (let i = 0; i < P.N; i++) { if (out[i] > 2) continue; const c = fourRef.get(tileKey(i)); if (c !== undefined && c < 3) cnt[out[i]][c]++; }
+      let best = [0, 1, 2], bs = -1;
+      for (const q of [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]) { const sc = cnt[0][q[0]] + cnt[1][q[1]] + cnt[2][q[2]]; if (sc > bs) { bs = sc; best = q; } }
+      for (let i = 0; i < P.N; i++) if (out[i] < 3) out[i] = best[out[i]];
+    }
+    return cache.four = out;
+  }
 
   // ---------- geometry → paths (world coordinates) ----------
   const BULGE = 0.27;
@@ -1029,7 +1238,8 @@ const FileFormats = (function () {
       const c = (e + 1) % 14, x = xy[b + c * 2], y = xy[b + c * 2 + 1];
       if (S.curved) { const q = ctrl(i, e); path.quadraticCurveTo(q[0], q[1], x, y); } else path.lineTo(x, y);
     }
-    path.closePath();
+    // The outline already ends where it began. No closePath(): in Chrome it gets slower with every
+    // shape already in the path, and these paths hold thousands of tiles (30,000 took over 2 seconds).
   }
   function segment(path, i, e) {
     const b = i * 28, xy = P.xy, c = (e + 1) % 14;
@@ -1037,29 +1247,45 @@ const FileFormats = (function () {
     if (S.curved) { const q = ctrl(i, e); path.quadraticCurveTo(q[0], q[1], xy[b + c * 2], xy[b + c * 2 + 1]); }
     else path.lineTo(xy[b + c * 2], xy[b + c * 2 + 1]);
   }
+  // Big shapes are kept as chunks of about a thousand neighbouring tiles, each with its bounding box.
+  // The browser draws many small shapes faster than one huge one, and chunks off the screen are skipped.
+  const CHUNK = 1000;
+  function chunkAdd(groups, c, i, fn) {
+    const g = groups[c] || (groups[c] = []);
+    let ch = g[g.length - 1];
+    if (!ch || ch.n >= CHUNK) { ch = { p: new Path2D(), b: [1e9, 1e9, -1e9, -1e9], n: 0 }; g.push(ch); }
+    fn(ch.p, i);
+    const b = i * 4, bb = P.bbox, r = ch.b;
+    if (bb[b] < r[0]) r[0] = bb[b]; if (bb[b + 1] < r[1]) r[1] = bb[b + 1]; if (bb[b + 2] > r[2]) r[2] = bb[b + 2]; if (bb[b + 3] > r[3]) r[3] = bb[b + 3];
+    ch.n++;
+  }
+  // the view in world units, with room for thick lines and curved edges
+  const worldRect = (view, w, h) => w ? [-view.ox / view.s - 1, (view.oy - h) / view.s - 1, (w - view.ox) / view.s + 1, view.oy / view.s + 1] : null;
+  function eachChunk(list, r, fn) {
+    if (list) for (const ch of list) if (!r || (ch.b[2] >= r[0] && ch.b[0] <= r[2] && ch.b[3] >= r[1] && ch.b[1] <= r[3])) fn(ch.p);
+  }
   function fills() {
     const key = 'fill|' + S.colour + '|' + S.torder + '|' + S.curved;
     if (cache[key]) return cache[key];
-    const ci = colourIndex(), paths = [];
-    for (let i = 0; i < P.N; i++) { const c = ci[i]; traceTile(paths[c] || (paths[c] = new Path2D()), i); }
-    return cache[key] = paths;
+    const ci = colourIndex(), groups = [];
+    for (let i = 0; i < P.N; i++) chunkAdd(groups, ci[i], i, traceTile);
+    return cache[key] = groups;
   }
   function edgesPath() {
     const key = 'edges|' + S.curved;
     if (cache[key]) return cache[key];
-    const p = new Path2D();
-    for (let i = 0; i < P.N; i++) for (let e = 0; e < 14; e++) { const j = P.nbT[i * 14 + e]; if (j < 0 || j > i) segment(p, i, e); }
-    return cache[key] = p;
+    const groups = [];
+    const add = (p, i) => { for (let e = 0; e < 14; e++) { const j = P.nbT[i * 14 + e]; if (j < 0 || j > i) segment(p, i, e); } };
+    for (let i = 0; i < P.N; i++) chunkAdd(groups, 0, i, add);
+    return cache[key] = groups[0] || [];
   }
   function outlinePath(k) {
     const key = 'out|' + k + '|' + S.curved;
     if (cache[key]) return cache[key];
-    const p = new Path2D(), a = P.anc[k];
-    for (let i = 0; i < P.N; i++) for (let e = 0; e < 14; e++) {
-      const j = P.nbT[i * 14 + e];
-      if (j < 0 || (j > i && a[i] !== a[j])) segment(p, i, e);
-    }
-    return cache[key] = p;
+    const groups = [], a = P.anc[k];
+    const add = (p, i) => { for (let e = 0; e < 14; e++) { const j = P.nbT[i * 14 + e]; if (j < 0 || (j > i && a[i] !== a[j])) segment(p, i, e); } };
+    for (let i = 0; i < P.N; i++) chunkAdd(groups, 0, i, add);
+    return cache[key] = groups[0] || [];
   }
   function nodePaths(v) {
     const key = 'node|' + v + '|' + S.curved;
@@ -1083,24 +1309,25 @@ const FileFormats = (function () {
     g.setTransform(k, 0, 0, -k, view.ox * dpr, view.oy * dpr);
     g.lineJoin = 'round'; g.lineCap = 'round';
     if (textured) { paintTextured(g, view, w, h, dpr); return; }
-    const pal = palette(), fp = fills(), grout = view.s > 3.2;
+    const pal = palette(), fp = fills(), grout = view.s > 3.2, r = worldRect(view, w, h);
     for (let c = 0; c < fp.length; c++) {
       if (!fp[c]) continue;
-      g.fillStyle = pal[c]; g.fill(fp[c]);
-      if (!grout) { g.strokeStyle = pal[c]; g.lineWidth = 0.9 / view.s; g.stroke(fp[c]); }
+      g.fillStyle = pal[c]; g.strokeStyle = pal[c]; g.lineWidth = 0.9 / view.s;
+      eachChunk(fp[c], r, q => { g.fill(q); if (!grout) g.stroke(q); });
     }
-    if (A.patterns && S.colour !== 'plain' && view.s > 2) paintPatterns(g, view, dpr, fp, pal);
+    if (A.patterns && S.colour !== 'plain' && view.s > 2) paintPatterns(g, view, dpr, fp, pal, r);
     if (grout) {
       g.strokeStyle = PAL.grout; g.globalAlpha = 0.9;
-      g.lineWidth = Math.min(1.5, Math.max(0.7, view.s * 0.07)) * BW() / view.s; g.stroke(edgesPath());
+      g.lineWidth = Math.min(1.5, Math.max(0.7, view.s * 0.07)) * BW() / view.s; eachChunk(edgesPath(), r, q => g.stroke(q));
       g.globalAlpha = 1;
     }
   }
   function draw() {
     raf = 0;
     if (!P || !W) return;
+    if (regionStale()) { loadRegion(); afterRegion(); }
     paintBase(ctx, V, W, H, DPR, D.on);
-    paintOutline(ctx, V, DPR);
+    paintOutline(ctx, V, DPR, W, H);
     const hn = hoverNode >= 0 ? hoverNode : pinNode;
     if (hn >= 0) {
       const np = nodePaths(hn);
@@ -1130,14 +1357,14 @@ const FileFormats = (function () {
     if (S.sel >= 0 && S.edgeNums) drawEdgeNumbers();
   }
   // supertile outlines: thinner as the supertiles shrink on screen, so a zoomed-out patch is not buried in ink
-  function paintOutline(g, view, dpr) {
+  function paintOutline(g, view, dpr, w, h) {
     const k = view.s * dpr;
     g.setTransform(k, 0, 0, -k, view.ox * dpr, view.oy * dpr);
     g.lineJoin = 'round'; g.lineCap = 'round';
     if (S.outline <= 0) return;
     const px = Math.min(1.6 + 0.4 * S.outline, Math.max(0.45, view.s * 0.11 * Math.pow(1.7, S.outline - 1)));
     g.strokeStyle = PAL.sup; g.lineWidth = px * BW() / view.s; g.globalAlpha = px < 1 ? 0.5 + 0.5 * px : 1;
-    g.stroke(outlinePath(S.outline)); g.globalAlpha = 1;
+    eachChunk(outlinePath(S.outline), worldRect(view, w, h), q => g.stroke(q)); g.globalAlpha = 1;
   }
   const sx = x => x * V.s + V.ox, sy = y => -y * V.s + V.oy;
   function letterOrder() { return S.outline > 0 ? S.outline : (S.colour === 'type' ? Math.min(S.torder, P.n + 1) : 1); }
@@ -1296,14 +1523,14 @@ const FileFormats = (function () {
   function slotPath(s) {
     const key = 'slot|' + s + '|' + D.ownG + '|' + S.curved;
     if (cache[key]) return cache[key];
-    const p = new Path2D(); for (let i = 0; i < P.N; i++) if (slotOf(i) === s) traceTile(p, i);
-    return cache[key] = p;
+    const groups = []; for (let i = 0; i < P.N; i++) if (slotOf(i) === s) chunkAdd(groups, 0, i, traceTile);
+    return cache[key] = groups[0] || [];
   }
   function allPath() {
     const key = 'all|' + S.curved;
     if (cache[key]) return cache[key];
-    const p = new Path2D(); for (let i = 0; i < P.N; i++) traceTile(p, i);
-    return cache[key] = p;
+    const groups = []; for (let i = 0; i < P.N; i++) chunkAdd(groups, 0, i, traceTile);
+    return cache[key] = groups[0] || [];
   }
   function visibleTiles(view, w, h) {
     const x0 = -view.ox / view.s, x1 = (w - view.ox) / view.s, y1 = view.oy / view.s, y0 = (view.oy - h) / view.s;
@@ -1349,8 +1576,9 @@ const FileFormats = (function () {
       return;
     }
     // far away or picture mode: whole-patch paths
-    for (const s of (D.ownG ? [0, 1] : [0])) { g.fillStyle = D.slots[s].avg; g.fill(slotPath(s)); }
-    if (plane) { g.fillStyle = planePattern(g); g.fill(allPath()); }
+    const r = worldRect(view, w, h);
+    for (const s of (D.ownG ? [0, 1] : [0])) { g.fillStyle = D.slots[s].avg; eachChunk(slotPath(s), r, q => g.fill(q)); }
+    if (plane) { g.fillStyle = planePattern(g); eachChunk(allPath(), r, q => g.fill(q)); }
     else if (vis) {
       for (const i of vis) { g.fillStyle = patternFor(g, D.slots[slotOf(i)], up ? 'up' : 'turn'); g.fill(tileXform(g, i, K, OX, OY, up)); }
       g.setTransform(K, 0, 0, -K, OX, OY);
@@ -1358,10 +1586,10 @@ const FileFormats = (function () {
     if (tintOn) {
       const fp = fills(), tp = tintPal()[S.colour];
       g.globalCompositeOperation = 'multiply'; g.globalAlpha = D.tint;
-      for (let c = 0; c < fp.length; c++) if (fp[c]) { g.fillStyle = tp[c]; g.fill(fp[c]); }
+      for (let c = 0; c < fp.length; c++) if (fp[c]) { g.fillStyle = tp[c]; eachChunk(fp[c], r, q => g.fill(q)); }
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
     }
-    if (gpx && view.s > 2) { g.strokeStyle = D.groutColour; g.lineWidth = gpx / view.s; g.stroke(edgesPath()); }
+    if (gpx && view.s > 2) { g.strokeStyle = D.groutColour; g.lineWidth = gpx / view.s; eachChunk(edgesPath(), r, q => g.stroke(q)); }
   }
 
   // ---- studio ----
@@ -1419,7 +1647,7 @@ const FileFormats = (function () {
   function drawPreview() {
     if (!studioOpen || !PW || !P) return;
     const view = { s: PW / 19 };
-    const i = S.sel >= 0 ? S.sel : 0;
+    const i = S.sel >= 0 ? S.sel : Math.max(0, nearestToCentre());
     view.ox = PW / 2 - P.cen[i * 2] * view.s; view.oy = PH / 2 + P.cen[i * 2 + 1] * view.s;
     paintBase(pctx, view, PW, PH, DPR, true);
   }
@@ -1951,7 +2179,7 @@ const FileFormats = (function () {
     try {
       paintBase(g, pl.view, pl.w, pl.h, pl.dpr, D.on, bg);
       if (X.overlays) {
-        paintOutline(g, pl.view, pl.dpr);
+        paintOutline(g, pl.view, pl.dpr, pl.w, pl.h);
         if (S.letters) { g.setTransform(pl.dpr, 0, 0, pl.dpr, 0, 0); drawLetters(g, pl.view, pl.w, pl.h); }
       }
     } finally { D.slots.forEach(sl => sl.pats.delete(g)); }
@@ -2035,13 +2263,16 @@ const FileFormats = (function () {
   }
 
   function seedLabel() { return S.seed === 'R' ? 'random ancestry ' + S.rseed : SEEDS.find(s => s.id === S.seed).label; }
-  function fileBase() { return `spectre-lab-${S.seed === 'R' ? 'random' + S.rseed : S.seed}-${S.depth}steps-${X.area === 'view' ? 'view' : 'patch'}`; }
+  function fileBase() { return `spectre-lab-${S.seed === 'R' ? 'random' + S.rseed : S.seed}-${S.mode === 'infinite' ? 'infinite' : S.depth + 'steps'}-${X.area === 'view' ? 'view' : 'patch'}`; }
   function caption() {
-    return `Spectre tiling - ${fmt(P.N)} tiles, ${S.depth} substitution steps, seed ${seedLabel()}` + (D.on ? ' - custom tile design' : '') + ` - Spectre Lab v${BUILD.version}`;
+    return (S.mode === 'infinite' ? `Spectre tiling - a view of the infinite tiling, seed ${seedLabel()}` : `Spectre tiling - ${fmt(P.N)} tiles, ${S.depth} substitution steps, seed ${seedLabel()}`)
+      + (D.on ? ' - custom tile design' : '') + ` - Spectre Lab v${BUILD.version}`;
   }
   function setXNote(t) { $('xNote').textContent = t; }
   function syncExport() {
     if (!P || !W) return;
+    if (S.mode === 'infinite' && X.area === 'patch') X.area = 'view';    // an infinite tiling has no whole patch
+    const pb = $('xArea').querySelector('[data-v="patch"]'); if (pb) pb.hidden = S.mode === 'infinite';
     const tile = X.area === 'tile';
     if (!D.ownG) X.tileSlot = 0;
     press($('xArea'), X.area); press($('xFormat'), X.format); press($('xSize'), X.size); press($('xPage'), X.page); press($('xTile'), X.tileSlot);
@@ -2182,13 +2413,14 @@ const FileFormats = (function () {
 
   // ---------- view ----------
   function fit(frac) {
+    if (S.mode === 'infinite') { initialView(); return; }    // no edge to fit: go back to where it started
     const [x0, y0, x1, y1] = P.box, bw = x1 - x0, bh = y1 - y0;
     V.s = Math.min(W / bw, H / bh) * 0.92 / (frac || 1);
     V.ox = W / 2 - (x0 + x1) / 2 * V.s; V.oy = H / 2 + (y0 + y1) / 2 * V.s;
     request();
   }
   function zoomAt(x, y, f) {
-    const s = Math.max(0.4, Math.min(420, V.s * f)), g = s / V.s;
+    const s = Math.max(minScale(), Math.min(420, V.s * f)), g = s / V.s;
     V.ox = x - (x - V.ox) * g; V.oy = y - (y - V.oy) * g; V.s = s; request();
   }
   // Start on the innermost core (the depth-1 patch, which every deeper patch contains).
@@ -2310,11 +2542,11 @@ const FileFormats = (function () {
     let s = cs[0].dim ? `The only Spectre of ${ART[hex[0].t]} <b>${hex[0].t}</b> hexagon`
       : `Spectre ${cs[0].d} of a <b>G</b> hexagon${cs[0].d === '1' ? ' (the half turned by 30°)' : ''}`;
     for (let k = 0; k < hex.length - 1; k++) s += `, which is child ${hex[k].d} of ${ART[hex[k + 1].t]} <b>${hex[k + 1].t}</b>`;
-    return s + ', the root of this patch.';
+    return s + (S.mode === 'infinite' ? ', and so on up through ever larger hexagons.' : ', the root of this patch.');
   }
 
   function select(i, keepStep) {
-    S.sel = i; hoverEdge = -1; pinNode = -1;
+    S.sel = i; selKey = i >= 0 ? tileKey(i) : null; hoverEdge = -1; pinNode = -1;
     if (!keepStep) { lastStep = null; cameEdge = -1; }
     renderInspector(-1); request();
     if (i >= 0) announce('Selected. ' + readingText(cells(i)));
@@ -2323,6 +2555,11 @@ const FileFormats = (function () {
     let i = S.sel;
     if (i < 0) return;
     if (P.nbT[i * 14 + e] < 0) {
+      if (S.mode === 'infinite') {
+        centreOn(i); loadRegion(); afterRegion();
+        if (S.sel >= 0 && P.nbT[S.sel * 14 + e] >= 0) step(e);
+        return;
+      }
       if (S.depth >= MAXD) return;
       busy(() => {
         while (S.depth < MAXD && P.nbT[S.sel * 14 + e] < 0) setDepth(S.depth + 1, true);
@@ -2338,7 +2575,7 @@ const FileFormats = (function () {
     let h = -1;
     for (let p = after.length - 1; p >= 0; p--) if (before[p].d !== after[p].d || before[p].t !== after[p].t) { h = p; break; }
     lastStep = { out: C.tEdge(e), into: C.tEdge(ej), changed: h + 1, total: after.length };
-    cameEdge = ej; S.sel = j; hoverEdge = -1; pinNode = -1;
+    cameEdge = ej; S.sel = j; selKey = tileKey(j); hoverEdge = -1; pinNode = -1;
     renderInspector(h); ensureVisible(j); request();
     announce(`Crossed edge ${lastStep.out} into edge ${lastStep.into}; ${lastStep.changed} of ${lastStep.total} coordinates changed. ` + readingText(after));
     const btn = document.querySelector(`.edge[data-e="${e}"]`);
@@ -2355,7 +2592,7 @@ const FileFormats = (function () {
       if (c.kind === 'tile') {
         h += `<button type="button" class="cell${c.dim ? ' dim' : ''}${fl}" data-node="-1" title="${c.dim ? 'Only Spectre of its hexagon' : 'Spectre ' + c.d + ' of its G hexagon'}" aria-label="${c.dim ? 'Only Spectre of its hexagon' : 'Spectre ' + c.d + ' of its G hexagon'}"><span class="o">tile</span><span class="d">${c.d}</span><span class="t">${c.dim ? 'only' : 'of G'}</span></button>`;
       } else {
-        const g = C.GREEK[c.t], title = c.kind === 'root' ? `Root: ${ORD(c.order)}-order ${c.t} (${g}) hexagon` : `${ORD(c.order)}-order ${c.t} (${g}) hexagon, child ${c.d} of its parent`;
+        const g = C.GREEK[c.t], title = c.kind === 'root' ? `${S.mode === 'infinite' ? 'Largest hexagon loaded so far' : 'Root'}: ${ORD(c.order)}-order ${c.t} (${g}) hexagon` : `${ORD(c.order)}-order ${c.t} (${g}) hexagon, child ${c.d} of its parent`;
         h += `<button type="button" class="cell${c.kind === 'root' ? ' root' : ''}${fl}" data-node="${c.node}" style="--sw:var(--t-${c.t})" title="${title}" aria-label="${title}. Highlight it on the tiling" aria-pressed="false"><span class="o">${ORD(c.order)}</span><span class="d">${c.d}</span><span class="t"><i></i>${c.kind === 'root' ? 'root' : c.t}</span></button>`;
       }
     });
@@ -2368,7 +2605,7 @@ const FileFormats = (function () {
     h += `<dt>Rotation</dt><dd>${T.k * 30}° <small>${odd ? 'odd multiple of 30°: a turned G half' : 'even multiple of 30°'}</small></dd>`;
     h += `<dt>Anchor vertex</dt><dd>(${T.t.map(minus).join(', ')}) <small>in 1, d, d², d³</small></dd>`;
     h += `<dt>In the plane</dt><dd>x ${minus(+x.toFixed(3))}, y ${minus(+y.toFixed(3))}</dd>`;
-    h += `<dt>Neighbours</dt><dd>${nb.size} Spectres <small>across 14 edges${rim ? `, ${rim} on the patch rim` : ''}</small></dd>`;
+    h += `<dt>Neighbours</dt><dd>${nb.size} Spectres <small>across 14 edges${rim ? `, ${rim} on the ${S.mode === 'infinite' ? 'edge of the loaded area' : 'patch rim'}` : ''}</small></dd>`;
     h += '</dl>';
     const stepTxt = lastStep ? `out ${lastStep.out} → in ${lastStep.into} · rewrote ${lastStep.changed} of ${lastStep.total}` : '';
     h += `<div class="walk"><div class="walkhead"><span class="lbl">Walk across an edge (Tatham's numbering)</span><span class="step" aria-live="polite">${stepTxt}</span></div><div class="edges">`;
@@ -2378,7 +2615,8 @@ const FileFormats = (function () {
       if (j >= 0) {
         const ty = P.nodes.type[P.tiles.node[j]], ej = C.tEdge(P.nbE[i * 14 + e]);
         to = `${ty}·${ej}`; title = `Edge ${t} meets edge ${ej} of a Spectre in ${ART[ty]} ${ty} hexagon`;
-      } else if (S.depth < MAXD) { to = 'grow'; cls += ' grow'; title = `Edge ${t} is on the patch rim; walking here adds substitution steps`; }
+      } else if (S.mode === 'infinite') { to = 'more'; cls += ' grow'; title = `Edge ${t} leads beyond the loaded area; walking there loads more`; }
+      else if (S.depth < MAXD) { to = 'grow'; cls += ' grow'; title = `Edge ${t} is on the patch rim; walking here adds substitution steps`; }
       else { to = 'rim'; dis = ' disabled'; title = `Edge ${t} is on the rim of the largest patch`; }
       if (e === cameEdge) cls += ' came';
       h += `<button type="button" class="${cls}" data-e="${e}" title="${title}" aria-label="${title}"${dis}><span class="n">${t}</span><span class="to">${to}</span></button>`;
@@ -2456,6 +2694,7 @@ const FileFormats = (function () {
       note.innerHTML = 'All Spectres share one handedness. None of them is a mirror image.';
     }
     tb.innerHTML = h;
+    if (S.mode === 'infinite') note.innerHTML = `Counted over the <b>${fmt(P.N)}</b> Spectres loaded around the view. ` + note.innerHTML;
   }
 
   // ---------- controls ----------
@@ -2476,6 +2715,8 @@ const FileFormats = (function () {
     { v: 'type', label: 'Hexagon type' }, { v: 'four', label: 'Four colours' },
     { v: 'orient', label: 'Rotation' }, { v: 'plain', label: 'Plain' }
   ], v => { S.colour = v; syncControls(); renderCensus(); request(); });
+  seg($('modeSeg'), [{ v: 'infinite', label: 'Infinite', title: 'Built around the view as you move: no edge' }, { v: 'patch', label: 'Patch', title: 'One finished patch of 1 to 5 substitution steps' }],
+    v => { if (v !== S.mode) busy(() => setMode(v)); });
   const sel = $('seedSel');
   SEEDS.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.label; sel.appendChild(o); });
   sel.addEventListener('change', () => { S.seed = sel.value; busy(newSeed); });
@@ -2484,27 +2725,44 @@ const FileFormats = (function () {
   tog('tLetters', 'letters'); tog('tCurved', 'curved'); tog('tEdges', 'edgeNums');
 
   function syncControls() {
+    const inf = S.mode === 'infinite', maxT = inf ? INF_ORDERS : S.depth + 1, maxO = inf ? INF_ORDERS : S.depth;
+    press($('modeSeg'), S.mode);
+    $('depthRow').hidden = inf;
     press($('depthSeg'), S.depth);
     press($('colourSeg'), S.colour);
-    S.torder = Math.min(S.torder, S.depth + 1);
-    S.outline = Math.min(S.outline, S.depth);
+    S.torder = Math.min(S.torder, maxT);
+    S.outline = Math.min(S.outline, maxO);
+    for (const o of sel.options) {
+      const only = inf && !INF_SEEDS.has(o.value);
+      o.disabled = only; o.textContent = SEEDS.find(x => x.id === o.value).label + (only ? ' (patch only)' : '');
+    }
+    $('zFit').textContent = inf ? 'Home' : 'Fit';
+    $('zFit').title = inf ? 'Back to where the tiling started' : 'Fit the whole patch';
     const tos = $('typeOrderSeg');
-    seg(tos, Array.from({ length: S.depth + 1 }, (_, k) => ({ v: k + 1, label: String(k + 1), title: `Colour by the ${ORD(k + 1)}-order hexagon` })),
+    seg(tos, Array.from({ length: maxT }, (_, k) => ({ v: k + 1, label: String(k + 1), title: `Colour by the ${ORD(k + 1)}-order hexagon` })),
       v => { S.torder = +v; syncControls(); renderCensus(); request(); });
     press(tos, S.torder);
     $('typeOrderRow').hidden = S.colour !== 'type';
     const os = $('outlineSeg');
-    seg(os, [{ v: 0, label: 'Off' }].concat(Array.from({ length: S.depth }, (_, k) => ({ v: k + 1, label: String(k + 1), title: `Outline the ${ORD(k + 1)}-order hexagons` }))),
+    seg(os, [{ v: 0, label: 'Off' }].concat(Array.from({ length: maxO }, (_, k) => ({ v: k + 1, label: String(k + 1), title: `Outline the ${ORD(k + 1)}-order hexagons` }))),
       v => { S.outline = +v; syncControls(); request(); });
     press(os, S.outline);
     sel.value = S.seed;
     const sd = SEEDS.find(s => s.id === S.seed), root = P.nodes.type[0];
-    const colourName = { type: `hexagon type at order ${Math.min(S.torder, S.depth + 1)}`, four: 'four colours', orient: 'rotation', plain: 'a single colour' }[S.colour];
-    cv.setAttribute('aria-label', `Spectre tiling: ${fmt(P.N)} tiles, ${S.depth} substitution steps, coloured by ${colourName}${D.on ? ', showing your tile design' : ''}.`);
-    $('caption').innerHTML = `<b>${fmt(P.N)}</b> Spectres · ${S.depth} step${S.depth > 1 ? 's' : ''} · root ${root} · seed ${S.seed === 'R' ? '#' + S.rseed : sd.short}`;
-    $('patchNote').innerHTML = `<b>${fmt(P.N)}</b> Spectres inside one ${ORD(S.depth + 1)}-order <b>${root}</b> (${C.GREEK[root]}) hexagon. ` +
-      (S.seed === 'R' ? `Ancestry #${S.rseed} is made up one level at a time, weighted by how common each hexagon type is.`
-        : `Each extra step wraps the current patch in a larger ${sd.id[0]} hexagon, at child ${sd.id[1]}.`);
+    const colourName = { type: `hexagon type at order ${Math.min(S.torder, maxT)}`, four: 'four colours', orient: 'rotation', plain: 'a single colour' }[S.colour];
+    const seedShort = S.seed === 'R' ? '#' + S.rseed : sd.short;
+    const ancestry = `Ancestry #${S.rseed} is made up one level at a time, weighted by how common each hexagon type is.`;
+    if (inf) {
+      cv.setAttribute('aria-label', `Infinite Spectre tiling, ${fmt(P.N)} tiles loaded around the view, coloured by ${colourName}${D.on ? ', showing your tile design' : ''}.`);
+      $('caption').innerHTML = `<b>Infinite</b> · seed ${seedShort}`;
+      $('patchNote').innerHTML = `The tiling is built around the view as you move, so it has no edge. The <b>${fmt(P.N)}</b> Spectres loaded now sit inside one ${ORD(P.n + 1)}-order <b>${root}</b> (${C.GREEK[root]}) hexagon, and larger ones are added as you go further. ` +
+        (S.seed === 'R' ? ancestry : 'Seeds marked patch only keep their first patch on the edge of every larger hexagon, so they never fill the whole plane.');
+    } else {
+      cv.setAttribute('aria-label', `Spectre tiling: ${fmt(P.N)} tiles, ${S.depth} substitution steps, coloured by ${colourName}${D.on ? ', showing your tile design' : ''}.`);
+      $('caption').innerHTML = `<b>${fmt(P.N)}</b> Spectres · ${S.depth} step${S.depth > 1 ? 's' : ''} · root ${root} · seed ${seedShort}`;
+      $('patchNote').innerHTML = `<b>${fmt(P.N)}</b> Spectres inside one ${ORD(S.depth + 1)}-order <b>${root}</b> (${C.GREEK[root]}) hexagon. ` +
+        (S.seed === 'R' ? ancestry : `Each extra step wraps the current patch in a larger ${sd.id[0]} hexagon, at child ${sd.id[1]}.`);
+    }
   }
   function renderAll() { syncControls(); renderInspector(-1); renderCensus(); syncExport(); request(); }
 
@@ -2516,9 +2774,26 @@ const FileFormats = (function () {
     if (!quiet) renderAll();
   }
   function newSeed() {
-    makeChain(); build(); initialView();
-    S.sel = nearestToCentre(); lastStep = null; cameEdge = -1;
+    makeChain(); regionN = 0; fourRef = null; initialView(); build();
+    S.sel = nearestToCentre(); selKey = S.sel >= 0 ? tileKey(S.sel) : null; lastStep = null; cameEdge = -1;
     renderAll();
+  }
+  function setMode(m) {
+    const key = S.sel >= 0 ? tileKey(S.sel) : selKey;
+    S.mode = m; regionN = 0; fourRef = null;
+    if (m === 'infinite' && !INF_SEEDS.has(S.seed)) { S.seed = 'D5'; makeChain(); initialView(); }
+    if (m === 'infinite' && V.s < minScale()) zoomAt(W / 2, H / 2, minScale() / V.s);
+    build();
+    S.sel = key ? findKey(key) : -1;
+    if (m === 'patch') {
+      // the view may be past the edge of the finite patch: then show all of it
+      const [x0, y0, x1, y1] = P.box, cx = (W / 2 - V.ox) / V.s, cy = (V.oy - H / 2) / V.s;
+      if (cx < x0 || cx > x1 || cy < y0 || cy > y1) fit(1);
+      if (S.sel < 0) S.sel = nearestToCentre();
+    }
+    selKey = S.sel >= 0 ? tileKey(S.sel) : null; lastStep = null; cameEdge = -1;
+    renderAll();
+    announce(m === 'infinite' ? 'Infinite tiling: built around the view as you move.' : `Patch of ${S.depth} substitution steps.`);
   }
   function busy(fn) {
     const b = $('busy'); b.hidden = false;
@@ -2574,11 +2849,13 @@ const FileFormats = (function () {
     loadDesign();
     if (data && data.D) ['on', 'placement', 'planeSize', 'tint', 'grout', 'groutColour', 'ownG'].forEach(k => { if (data.D[k] !== undefined) D[k] = data.D[k]; });
     ['tLetters', 'tCurved', 'tEdges'].forEach((id, k) => { $(id).checked = S[['letters', 'curved', 'edgeNums'][k]]; });
-    makeChain(); build();
+    if (S.mode === 'infinite' && !INF_SEEDS.has(S.seed)) S.mode = 'patch';
+    makeChain();
     resize();
     new ResizeObserver(resize).observe(stage);
     if (saved && data.V) Object.assign(V, data.V); else initialView();
-    S.sel = nearestToCentre();
+    build();
+    S.sel = nearestToCentre(); selKey = S.sel >= 0 ? tileKey(S.sel) : null;
     renderAll(); syncDesign(); requestAnimationFrame(renderThumbs);
   }
   try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => ({ S: Object.assign({}, S), V: Object.assign({}, V), D: { on: D.on, placement: D.placement, planeSize: D.planeSize, tint: D.tint, grout: D.grout, groutColour: D.groutColour, ownG: D.ownG } })); } catch (_) {}
