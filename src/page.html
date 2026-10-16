@@ -182,6 +182,14 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
 .filebtn { position: relative; overflow: hidden; }
 .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
 .st-note { font-size: 12px; color: var(--accent); }
+.st-banner { top: 12px; left: 12px; max-width: calc(100% - 290px); padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; z-index: 2; }
+.studio.locked .st-bar.tools, .studio.locked .st-bar.bottom { opacity: .45; pointer-events: none; }
+.studio.locked #ed { cursor: not-allowed; }
+.tfig { margin: 0; position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.tfig figcaption { font-size: 10.5px; color: var(--muted); }
+.thumb { cursor: pointer; }
+.thumb-x { position: absolute; top: -8px; right: -8px; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); font-size: 16px; line-height: 1; padding: 0; cursor: pointer; display: grid; place-items: center; }
+.thumb-x:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---------- export ---------- */
 .studio-launch { display: flex; padding: 2px; gap: 2px; }
@@ -205,6 +213,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
   .st-field input[type="range"] { width: 84px; }
   .pv-wrap { width: 136px; height: 100px; right: max(8px, env(safe-area-inset-right, 0px)); top: 8px; bottom: auto; }
   .st-tip { display: none; }
+  .st-banner { max-width: calc(100% - 170px); left: max(8px, env(safe-area-inset-left, 0px)); top: 8px; }
   html.studio-open, html.studio-open body { overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -234,7 +243,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
         <span class="st-note" id="stNote" aria-live="polite"></span>
         <button type="button" class="btn primary" id="stDone">Done</button>
       </div>
-      <div class="st-bar">
+      <div class="st-bar tools">
         <div class="seg" id="toolSeg" role="group" aria-label="Tool"></div>
         <div class="swatches" id="swatches" role="group" aria-label="Brush colour"></div>
         <input type="color" id="brushColour" aria-label="Custom brush colour" value="#1d4f9a">
@@ -247,6 +256,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
         <div class="chip st-tip">Lines that cross an edge at its dot, square to the edge, carry on into the neighbouring tile.</div>
         <div class="pv-wrap"><canvas id="pv" aria-label="Live preview of the tiling"></canvas><span class="chip pv-label">Live preview</span></div>
         <div class="drop" id="drop" hidden>Drop the picture onto the tile</div>
+        <div class="chip st-banner" id="gBanner" hidden><span id="gBannerText"></span><button type="button" class="btn primary" id="gBannerA"></button><button type="button" class="btn" id="gBannerB">Use main design</button></div>
       </div>
       <div class="st-bar bottom">
         <label class="btn filebtn">Add picture<input type="file" id="imgFile" accept="image/*"></label>
@@ -295,7 +305,11 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
     <section class="group" aria-labelledby="h-design">
       <h2 class="eyebrow" id="h-design">Tile design</h2>
       <div class="design-head">
-        <div class="thumbs"><canvas class="thumb" id="thumb0" aria-label="Your Spectre design"></canvas><canvas class="thumb" id="thumb1" aria-label="Design for the turned G halves" hidden></canvas></div>
+        <div class="thumbs">
+          <figure class="tfig"><canvas class="thumb" id="thumb0" aria-label="Your Spectre design. Opens the tile studio"></canvas><figcaption>Every Spectre</figcaption></figure>
+          <figure class="tfig" id="tfig1" hidden><canvas class="thumb" id="thumb1" aria-label="Design for the turned G halves. Opens the tile studio"></canvas><figcaption>Turned G halves</figcaption>
+            <button type="button" class="thumb-x" id="removeG" aria-label="Remove the turned G halves design" title="Use the main design for the turned G halves again">×</button></figure>
+        </div>
         <div class="design-act">
           <button type="button" class="btn primary" id="openStudio">Open tile studio</button>
           <label class="tog"><input type="checkbox" id="tDesign"><span>Use on the tiling</span></label>

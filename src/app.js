@@ -319,7 +319,7 @@
     const draw = mk(TEXN), tex = mk(TEXN);
     return { bg: '#f4efe4', img: null, imgSrc: null, imgT: { x: BB.cx, y: BB.cy, s: 5, r: 0 },
              draw, dctx: draw.getContext('2d', { willReadFrequently: true }), tex, tctx: tex.getContext('2d'),
-             avg: '#e9e3d7', pats: new Map(), undo: [] };
+             avg: '#e9e3d7', pats: new Map(), undo: [], edited: false };
   }
   const avgC = mk(24), avgG = avgC.getContext('2d', { willReadFrequently: true });
   function compose(sl) {
@@ -466,7 +466,7 @@
   function localToScreen(g) { g.setTransform(DPR * ES, 0, 0, -DPR * ES, DPR * (ECX - BB.cx * ES), DPR * (ECY + BB.cy * ES)); }
   function drawEditor() {
     if (!studioOpen || !EW) return;
-    const g = ectx, sl = cur();
+    const g = ectx, sl = gLocked() ? D.slots[0] : cur();
     g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = PAL.stage; g.fillRect(0, 0, ed.width, ed.height);
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     const [tx, ty] = l2e(C0[0] - RH, C0[1] + RH), sz = 2 * RH * ES;
@@ -507,6 +507,7 @@
     changed(sl, true); syncStudio();
   }
   function changed(sl, commit) {
+    if (sl === D.slots[1]) sl.edited = true;
     compose(sl);
     if (!D.on) { D.on = true; syncDesign(); }
     edRequest();
@@ -543,6 +544,7 @@
     if (e.button > 0) return;
     try { ed.setPointerCapture(e.pointerId); } catch (_) {}
     const [ex, ey] = edPt(e), sl = cur(); cursorPt = [ex, ey];
+    if (gLocked()) { note('Tap “Give them their own design” first'); return; }
     if (D.tool === 'brush' || D.tool === 'eraser') {
       pushUndo(sl); stroke = { last: toPx(ex, ey) }; paintSeg(sl, stroke.last, stroke.last); changed(sl);
     } else if (D.tool === 'fill') {
@@ -570,6 +572,7 @@
 
   // ---- pictures ----
   function loadFile(file) {
+    if (gLocked()) { note('Tap “Give them their own design” first'); return; }
     if (!file || !/^image\//.test(file.type)) { note('That file is not a picture'); return; }
     const url = URL.createObjectURL(file), im = new Image();
     im.onload = () => { setPicture(im, file.type !== 'image/jpeg'); URL.revokeObjectURL(url); };
@@ -609,14 +612,39 @@
   // ---- studio controls ----
   function sliderUndo(el, apply) {
     let armed = false;
-    el.addEventListener('input', () => { const sl = cur(); if (!armed) { pushUndo(sl); armed = true; } apply(sl); changed(sl); });
-    el.addEventListener('change', () => { armed = false; changed(cur(), true); });
+    el.addEventListener('input', () => { if (gLocked()) return; const sl = cur(); if (!armed) { pushUndo(sl); armed = true; } apply(sl); changed(sl); });
+    el.addEventListener('change', () => { if (gLocked()) return; armed = false; changed(cur(), true); });
   }
   seg($('slotSeg'), [{ v: 0, label: 'Every Spectre' }, { v: 1, label: 'Turned G halves' }], v => {
-    D.slot = +v;
-    if (D.slot === 1 && !D.ownG) { D.ownG = true; syncDesign(); renderThumbs(); save(); note('Turned G halves now use their own design'); }
-    syncStudio(); edRequest();
+    D.slot = +v; syncStudio(); edRequest();
   });
+  // The turned G halves either share the main design or have their own (slot 1).
+  const gLocked = () => D.slot === 1 && !D.ownG;
+  function copySlot(from, to) {
+    to.bg = from.bg; to.img = from.img; to.imgSrc = from.imgSrc; to.imgT = Object.assign({}, from.imgT);
+    to.dctx.clearRect(0, 0, TEXN, TEXN); to.dctx.drawImage(from.draw, 0, 0);
+    compose(to);
+  }
+  function afterG(msg) {
+    syncDesign(); syncStudio(); renderThumbs(); save(); request(); edRequest();
+    if (msg && studioOpen) note(msg);
+  }
+  function giveGOwn() {
+    const g = D.slots[1], restoring = g.edited;
+    if (!restoring) { copySlot(D.slots[0], g); g.undo = []; }
+    D.ownG = true;
+    afterG(restoring ? 'The turned G halves have their earlier design back' : 'The turned G halves start from a copy of your main design');
+  }
+  function dropGOwn() {
+    D.ownG = false;
+    afterG('The turned G halves use your main design again');
+  }
+  $('gBannerA').addEventListener('click', () => {
+    if (!D.ownG) { giveGOwn(); return; }
+    const g = D.slots[1]; pushUndo(g); copySlot(D.slots[0], g); changed(g, true); syncStudio();
+    note('Copied the main design. Undo brings back the previous one');
+  });
+  $('gBannerB').addEventListener('click', dropGOwn);
   seg($('toolSeg'), [{ v: 'brush', label: 'Brush' }, { v: 'eraser', label: 'Eraser' }, { v: 'fill', label: 'Fill' }, { v: 'move', label: 'Move picture' }],
     v => { D.tool = v; syncStudio(); edRequest(); });
   (function () {
@@ -629,14 +657,14 @@
   })();
   $('brushColour').addEventListener('input', e => { D.colour = e.target.value; if (D.tool === 'eraser' || D.tool === 'move') D.tool = 'brush'; syncStudio(); });
   $('brushSize').addEventListener('input', e => { D.size = +e.target.value; edRequest(); });
-  $('undoBtn').addEventListener('click', undo);
-  $('clearBtn').addEventListener('click', () => { const sl = cur(); pushUndo(sl); sl.dctx.clearRect(0, 0, TEXN, TEXN); changed(sl, true); note('Drawing cleared. Undo brings it back'); });
+  $('undoBtn').addEventListener('click', () => { if (!gLocked()) undo(); });
+  $('clearBtn').addEventListener('click', () => { if (gLocked()) return; const sl = cur(); pushUndo(sl); sl.dctx.clearRect(0, 0, TEXN, TEXN); changed(sl, true); note('Drawing cleared. Undo brings it back'); });
   sliderUndo($('imgScale'), sl => { if (sl.img) sl.imgT.s = +$('imgScale').value / 100; });
   sliderUndo($('imgRot'), sl => { if (sl.img) sl.imgT.r = +$('imgRot').value; });
   sliderUndo($('bgColour'), sl => { sl.bg = $('bgColour').value; });
-  $('imgFit').addEventListener('click', () => { const sl = cur(); if (!sl.img) return; pushUndo(sl); fitPicture(sl); changed(sl, true); syncStudio(); });
+  $('imgFit').addEventListener('click', () => { const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); fitPicture(sl); changed(sl, true); syncStudio(); });
   $('imgRemove').addEventListener('click', () => {
-    const sl = cur(); if (!sl.img) return; pushUndo(sl); sl.img = null; sl.imgSrc = null;
+    const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); sl.img = null; sl.imgSrc = null;
     if (D.tool === 'move') D.tool = 'brush';
     changed(sl, true); syncStudio(); syncDesign(); note('Picture removed. Undo brings it back');
   });
@@ -654,6 +682,14 @@
     $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = !hasImg;
     if (hasImg) { $('imgScale').value = Math.round(sl.imgT.s * 100); $('imgRot').value = Math.round(sl.imgT.r); }
     ed.classList.toggle('move', D.tool === 'move');
+    const locked = gLocked();
+    studio.classList.toggle('locked', locked);
+    $('gBanner').hidden = D.slot !== 1;
+    if (D.slot === 1) {
+      $('gBannerText').textContent = D.ownG ? 'The turned G halves have their own design.' : 'The turned G halves use your main design.';
+      $('gBannerA').textContent = D.ownG ? 'Copy main design' : (D.slots[1].edited ? 'Bring back their own design' : 'Give them their own design');
+      $('gBannerB').hidden = !D.ownG;
+    }
   }
   function openStudio(slot) {
     if (slot != null) D.slot = slot;
@@ -679,7 +715,8 @@
   $('groutColour').addEventListener('input', e => { D.groutColour = e.target.value; request(); });
   $('groutColour').addEventListener('change', save);
   $('tDesign').addEventListener('change', e => { D.on = e.target.checked; syncDesign(); save(); request(); });
-  $('tOwnG').addEventListener('change', e => { D.ownG = e.target.checked; if (!D.ownG && D.slot === 1) D.slot = 0; syncDesign(); renderThumbs(); save(); request(); });
+  $('tOwnG').addEventListener('change', e => { if (e.target.checked) giveGOwn(); else dropGOwn(); });
+  $('removeG').addEventListener('click', dropGOwn);
   $('openStudio').addEventListener('click', () => openStudio());
   $('launchStudio').addEventListener('click', () => openStudio());
   [$('thumb0'), $('thumb1')].forEach((t, k) => t.addEventListener('click', () => openStudio(k)));
@@ -691,7 +728,7 @@
     $('planeSize').value = D.planeSize; $('planeVal').textContent = D.planeSize;
     $('tint').value = Math.round(D.tint * 100); $('tintVal').textContent = Math.round(D.tint * 100) + '%';
     $('groutColour').value = D.groutColour;
-    $('thumb1').hidden = !D.ownG;
+    $('tfig1').hidden = !D.ownG;
     const hasImg = D.slots[0] && D.slots[0].img;
     const txt = {
       turn: 'The design turns with every Spectre, so the twelve rotations of the tiling show up in the pattern.',
@@ -725,11 +762,20 @@
     const o = { on: D.on, placement: D.placement, planeSize: D.planeSize, tint: D.tint, grout: D.grout,
                 groutColour: D.groutColour, ownG: D.ownG, colour: D.colour, size: D.size };
     let slots;
-    try { slots = D.slots.map(sl => ({ bg: sl.bg, imgT: sl.imgT, imgSrc: sl.imgSrc, draw: sl.draw.toDataURL('image/png') })); } catch (_) { return; }
+    try { slots = D.slots.map(sl => ({ bg: sl.bg, imgT: sl.imgT, imgSrc: sl.imgSrc, edited: !!sl.edited, draw: sl.draw.toDataURL('image/png') })); } catch (_) { return; }
     try { localStorage.setItem(LS, JSON.stringify({ o, slots })); }
     catch (_) {
       try { localStorage.setItem(LS, JSON.stringify({ o, slots: slots.map(s => Object.assign({}, s, { imgSrc: null })) })); note('The picture is too large to keep in this browser; the drawing is kept'); } catch (__) {}
     }
+  }
+  function matchesStarter(sl) {
+    const t = newSlot(); starter(t, '#8e2f2a', '#f0e2c6', STARTER_PAR);
+    const a = t.dctx.getImageData(0, 0, TEXN, TEXN).data, b = sl.dctx.getImageData(0, 0, TEXN, TEXN).data;
+    let off = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      if (Math.abs(a[i] - b[i]) > 8 || Math.abs(a[i + 1] - b[i + 1]) > 8 || Math.abs(a[i + 2] - b[i + 2]) > 8 || Math.abs(a[i + 3] - b[i + 3]) > 8) off++;
+    }
+    return off < 400;
   }
   function loadImg(src, cb) { const im = new Image(); im.onload = () => cb(im); im.src = src; }
   function loadDesign() {
@@ -737,7 +783,7 @@
     let data = null;
     try { data = JSON.parse(localStorage.getItem(LS) || 'null'); } catch (_) {}
     if (!data || !data.slots) {
-      starter(D.slots[0], '#1d4f9a', '#f4efe4', STARTER_PAR); starter(D.slots[1], '#8e2f2a', '#f0e2c6', STARTER_PAR);
+      starter(D.slots[0], '#1d4f9a', '#f4efe4', STARTER_PAR);
       D.slots.forEach(compose); return;
     }
     const o = data.o || {};
@@ -746,8 +792,17 @@
     data.slots.forEach((s, k) => {
       const sl = D.slots[k]; if (!sl || !s) return;
       if (s.bg) sl.bg = s.bg; if (s.imgT) sl.imgT = s.imgT;
+      sl.edited = !!s.edited;
       compose(sl);
-      if (s.draw) loadImg(s.draw, im => { sl.dctx.drawImage(im, 0, 0); compose(sl); after(); });
+      // Before 1.3.1 the G-halves tab switched on a separate design by itself, holding an untouched starter.
+      const legacyG = k === 1 && s.edited === undefined;
+      const settle = () => {
+        if (!legacyG) return;
+        sl.edited = !(s.bg === '#f0e2c6' && !s.imgSrc && matchesStarter(sl));
+        if (D.ownG && !sl.edited) { D.ownG = false; syncDesign(); save(); }
+      };
+      if (s.draw) loadImg(s.draw, im => { sl.dctx.drawImage(im, 0, 0); compose(sl); settle(); after(); });
+      else settle();
       if (s.imgSrc) loadImg(s.imgSrc, im => { const c = mk(im.naturalWidth, im.naturalHeight); c.getContext('2d').drawImage(im, 0, 0); sl.img = c; sl.imgSrc = s.imgSrc; compose(sl); after(); });
     });
   }
