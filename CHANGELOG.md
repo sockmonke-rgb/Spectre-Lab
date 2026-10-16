@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.0 — 2026-10-16
+
+- Accessibility section in the panel, remembered in this browser:
+  - Colour-blind safe colours for hexagon types, the four-colouring and rotation, based on the Okabe–Ito set and checked against simulated red-, green- and blue-blind vision, in light and dark themes. Tints and exports follow the chosen palette.
+  - Patterns on tiles: each colour gets its own hatch, dots or grid, kept the same size on screen and drawn in black or white for contrast. The census legend shows the patterns too, and exports include them.
+  - Bolder lines for grout, supertile outlines and the selection. On by default when the system asks for more contrast.
+  - Text size 100%, 125% or 150% for the panel, studio bars and the labels drawn on the tiling.
+- Keyboard: the tiling can be focused; arrow keys move the view, + and − zoom, 0 fits, Enter selects the tile in the middle. In the tile studio, arrow keys move the picture (Shift for bigger steps).
+- Screen readers: selecting or walking to a tile announces its coordinates; the tiling has a description; switches are announced as switches; buttons in the selected-tile panel have full names; a "Skip to the controls" link; focus returns to where it was when the studio or the export preview closes.
+- Larger touch targets on phones and tablets, slightly larger small text, and stronger borders when the system asks for more contrast.
+
 ## 1.7.0 — 2026-10-16
 
 - Export background is now a choice: screen colour, white, or (PNG only) transparent. PDFs default to white.

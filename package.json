@@ -1,6 +1,6 @@
 {
   "name": "spectre-lab",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Interactive explorer for the Spectre aperiodic monotile: exact substitution tiling, Tatham's combinatorial coordinates, a tile studio and PNG/PDF export.",
   "keywords": ["spectre", "aperiodic", "monotile", "tiling", "einstein", "substitution"],
   "author": "Mark Florentino",

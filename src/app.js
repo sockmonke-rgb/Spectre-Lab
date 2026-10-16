@@ -54,6 +54,77 @@
       halo: g('--halo'), ink: g('--ink')
     };
   }
+
+  // ---------- accessibility settings (kept in this browser) ----------
+  const A = { palette: 'standard', patterns: false, bold: false, text: '100' };
+  const A_KEY = 'spectre-lab-a11y-v1';
+  let TEXT_SCALE = 1;
+  const BW = () => A.bold ? 1.8 : 1;           // line-weight factor for "Bolder lines"
+  function loadA11y() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(A_KEY) || 'null'); } catch (_) {}
+    if (saved) Object.assign(A, saved);
+    else { try { if (matchMedia('(prefers-contrast: more)').matches) A.bold = true; } catch (_) {} }
+  }
+  function saveA11y() { try { localStorage.setItem(A_KEY, JSON.stringify(A)); } catch (_) {} }
+  function applyA11y() {
+    const root = document.documentElement;
+    if (A.palette === 'cvd') root.setAttribute('data-palette', 'cvd'); else root.removeAttribute('data-palette');
+    if (A.text !== '100') root.setAttribute('data-text', A.text); else root.removeAttribute('data-text');
+    TEXT_SCALE = +A.text / 100;
+    readPalette(); tintCache = null;
+  }
+
+  // Patterns: a second cue beside colour, so tile types can be told apart without seeing colour.
+  // Kept a constant size on screen, in black or white depending on the colour underneath.
+  const PAT_STYLES = { type: ['/', '\\', 'x', '.', '-', '|', ':', '', '+', '//'], four: ['', '/', '\\', ':'], orient: ['', '/', '\\', '-', '|', ':', 'x'] };
+  const patCache = new Map();
+  function luminance(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim()); if (!m) return 0.5;
+    const n = parseInt(m[1], 16), ch = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  }
+  const inkFor = hex => luminance(hex) > 0.3 ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)';
+  function patternTile(style, ink, scale) {
+    const key = style + '|' + ink + '|' + scale;
+    let c = patCache.get(key); if (c) return c;
+    const n = Math.max(6, Math.round(10 * scale)); c = document.createElement('canvas'); c.width = c.height = n;
+    const g = c.getContext('2d');
+    g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = Math.max(1, 1.4 * scale); g.lineCap = 'square';
+    const line = (x0, y0, x1, y1) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+    const dot = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+    const fwd = step => { for (let k = -n; k <= n; k += step) line(k, n, k + n, 0); };
+    const back = () => { for (const k of [-n, 0, n]) line(k, 0, k + n, n); };
+    if (style === '/') fwd(n);
+    else if (style === '//') fwd(n / 2);
+    else if (style === '\\') back();
+    else if (style === 'x') { fwd(n); back(); }
+    else if (style === '-') line(0, n / 2, n, n / 2);
+    else if (style === '|') line(n / 2, 0, n / 2, n);
+    else if (style === '+') { line(0, n / 2, n, n / 2); line(n / 2, 0, n / 2, n); }
+    else if (style === '.') dot(n / 2, n / 2, 1.8 * scale);
+    else if (style === ':') { dot(n / 4, n / 4, 1.3 * scale); dot(3 * n / 4, 3 * n / 4, 1.3 * scale); }
+    patCache.set(key, c); return c;
+  }
+  function paintPatterns(g, view, dpr, fp, pal) {
+    const styles = PAT_STYLES[S.colour]; if (!styles) return;
+    const K = view.s * dpr, m = new DOMMatrix([1 / K, 0, 0, -1 / K, -view.ox * dpr / K, view.oy * dpr / K]);
+    for (let c = 0; c < fp.length; c++) {
+      if (!fp[c] || !styles[c]) continue;
+      const p = g.createPattern(patternTile(styles[c], inkFor(pal[c]), dpr), 'repeat');
+      p.setTransform(m); g.fillStyle = p; g.fill(fp[c]);
+    }
+  }
+  // legend swatch: the colour, plus the pattern when patterns are on
+  function swatch(cssVar, hex, style) {
+    let bgi = '';
+    if (A.patterns && style) bgi = `background-image:url(${patternTile(style, inkFor(hex), 2).toDataURL()});background-size:10px 10px;`;
+    return `<span class="sw" style="background-color:var(${cssVar});${bgi}"></span>`;
+  }
+  function announce(text) {
+    const el = $('srLive'); if (!el) return;
+    el.textContent = ''; setTimeout(() => { el.textContent = String(text).replace(/<[^>]+>/g, ''); }, 40);
+  }
   const palette = () => S.colour === 'type' ? PAL.type : S.colour === 'four' ? PAL.four : S.colour === 'orient' ? PAL.orient : PAL.plain;
 
   // ---------- patch ----------
@@ -173,9 +244,10 @@
       g.fillStyle = pal[c]; g.fill(fp[c]);
       if (!grout) { g.strokeStyle = pal[c]; g.lineWidth = 0.9 / view.s; g.stroke(fp[c]); }
     }
+    if (A.patterns && S.colour !== 'plain' && view.s > 2) paintPatterns(g, view, dpr, fp, pal);
     if (grout) {
       g.strokeStyle = PAL.grout; g.globalAlpha = 0.9;
-      g.lineWidth = Math.min(1.5, Math.max(0.7, view.s * 0.07)) / view.s; g.stroke(edgesPath());
+      g.lineWidth = Math.min(1.5, Math.max(0.7, view.s * 0.07)) * BW() / view.s; g.stroke(edgesPath());
       g.globalAlpha = 1;
     }
   }
@@ -188,8 +260,8 @@
     if (hn >= 0) {
       const np = nodePaths(hn);
       ctx.fillStyle = PAL.accent; ctx.globalAlpha = 0.3; ctx.fill(np.fill); ctx.globalAlpha = 1;
-      ctx.strokeStyle = PAL.halo; ctx.lineWidth = 5 / V.s; ctx.stroke(np.edge);
-      ctx.strokeStyle = PAL.accent; ctx.lineWidth = 2.5 / V.s; ctx.stroke(np.edge);
+      ctx.strokeStyle = PAL.halo; ctx.lineWidth = 5 * BW() / V.s; ctx.stroke(np.edge);
+      ctx.strokeStyle = PAL.accent; ctx.lineWidth = 2.5 * BW() / V.s; ctx.stroke(np.edge);
     }
     if (S.sel >= 0) {
       const i = S.sel, sp = new Path2D(); traceTile(sp, i);
@@ -197,8 +269,8 @@
         const j = P.nbT[i * 14 + hoverEdge];
         if (j >= 0) { const np = new Path2D(); traceTile(np, j); ctx.fillStyle = PAL.accent; ctx.globalAlpha = 0.25; ctx.fill(np); ctx.globalAlpha = 1; }
       }
-      ctx.strokeStyle = PAL.halo; ctx.lineWidth = 6.5 / V.s; ctx.stroke(sp);
-      ctx.strokeStyle = PAL.accent; ctx.lineWidth = 3 / V.s; ctx.stroke(sp);
+      ctx.strokeStyle = PAL.halo; ctx.lineWidth = 6.5 * BW() / V.s; ctx.stroke(sp);
+      ctx.strokeStyle = PAL.accent; ctx.lineWidth = 3 * BW() / V.s; ctx.stroke(sp);
       if (hoverEdge >= 0) {
         const ep = new Path2D(); segment(ep, i, hoverEdge);
         ctx.strokeStyle = PAL.halo; ctx.lineWidth = 10 / V.s; ctx.stroke(ep);
@@ -219,7 +291,7 @@
     g.lineJoin = 'round'; g.lineCap = 'round';
     if (S.outline <= 0) return;
     const px = Math.min(1.6 + 0.4 * S.outline, Math.max(0.45, view.s * 0.11 * Math.pow(1.7, S.outline - 1)));
-    g.strokeStyle = PAL.sup; g.lineWidth = px / view.s; g.globalAlpha = px < 1 ? 0.5 + 0.5 * px : 1;
+    g.strokeStyle = PAL.sup; g.lineWidth = px * BW() / view.s; g.globalAlpha = px < 1 ? 0.5 + 0.5 * px : 1;
     g.stroke(outlinePath(S.outline)); g.globalAlpha = 1;
   }
   const sx = x => x * V.s + V.ox, sy = y => -y * V.s + V.oy;
@@ -232,7 +304,7 @@
       if (size < 24) continue;
       const x = P.nodeCen[v * 2] * view.s + view.ox, y = -P.nodeCen[v * 2 + 1] * view.s + view.oy;
       if (x < -40 || x > w + 40 || y < -40 || y > h + 40) continue;
-      const fs = Math.max(11, Math.min(34, size * 0.2));
+      const fs = Math.max(11, Math.min(34, size * 0.2)) * TEXT_SCALE;
       g.font = `600 ${fs}px ${FONT_D}`;
       g.lineWidth = Math.max(3, fs * 0.2); g.strokeStyle = PAL.halo; g.strokeText(P.nodes.type[v], x, y);
       g.fillStyle = PAL.ink; g.fillText(P.nodes.type[v], x, y);
@@ -242,7 +314,7 @@
     const i = S.sel, b = i * 28, xy = P.xy;
     const size = (P.bbox[i * 4 + 2] - P.bbox[i * 4]) * V.s;
     if (size < 130) return;
-    const fs = Math.max(9.5, Math.min(15, V.s * 0.27));
+    const fs = Math.max(9.5, Math.min(15, V.s * 0.27)) * TEXT_SCALE;
     ctx.font = `500 ${fs}px ${FONT_M}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
     const sgn = P.tf[i] ? -1 : 1;
     for (let e = 0; e < 14; e++) {
@@ -276,12 +348,13 @@
               slot: 0, tool: 'move', colour: '#1d4f9a', size: 10, guides: true, slots: [] };
   const SWATCHES = [['#1d4f9a', 'Cobalt'], ['#7fb3d9', 'Sky'], ['#3f8f73', 'Copper green'], ['#d8a23a', 'Ochre'],
                     ['#8e2f2a', 'Oxblood'], ['#5a3c6e', 'Manganese'], ['#1b1d24', 'Ink'], ['#fbfaf6', 'Tin white']];
-  // multiply tints use the light palette whatever the theme, since the design itself does not change with theme
-  const TINT = {
-    type: ['#f28b82', '#86e1e8', '#ec90e0', '#8f919a', '#c094ef', '#8b94ee', '#8edc91', '#f7c38f', '#f3e682', '#cf463d'],
-    four: ['#efd07c', '#e99c91', '#9bceb2', '#3349c2'],
-    orient: ['#e9a69e', '#e8cf93', '#bbd79b', '#94cfc8', '#a4b1e6', '#d1a5dd', '#1b2033']
-  };
+  // multiply tints use the light values of the chosen palette whatever the theme,
+  // since the design itself does not change with theme
+  let tintCache = null;
+  function tintPal() {
+    if (!tintCache) { const L = lightPalette(); tintCache = { type: L.type, four: L.four, orient: L.orient }; }
+    return tintCache;
+  }
 
   function bulgeCtrl(ax, ay, bx, by, e) {
     const s = C.tEdge(e) % 2 === 0 ? BULGE : -BULGE;
@@ -408,11 +481,11 @@
     const K = view.s * dpr, OX = view.ox * dpr, OY = view.oy * dpr;
     const up = D.placement === 'upright', plane = D.placement === 'plane', tiny = BB.w * view.s < 7;
     const tintOn = D.tint > 0 && S.colour !== 'plain';
-    const gpx = D.grout === 'none' ? 0 : D.grout === 'bold' ? Math.max(1.5, view.s * 0.16) : Math.max(0.6, Math.min(2, view.s * 0.05));
+    const gpx = (D.grout === 'none' ? 0 : D.grout === 'bold' ? Math.max(1.5, view.s * 0.16) : Math.max(0.6, Math.min(2, view.s * 0.05))) * BW();
     const vis = (plane || tiny) ? null : visibleTiles(view, w, h);
     if (vis && vis.length <= 2500) {
       // close up: one fill per visible Spectre, in that Spectre's own frame
-      const ci = tintOn ? colourIndex() : null, tp = tintOn ? TINT[S.colour] : null;
+      const ci = tintOn ? colourIndex() : null, tp = tintOn ? tintPal()[S.colour] : null;
       for (const i of vis) {
         const sl = D.slots[slotOf(i)], path = tileXform(g, i, K, OX, OY, up);
         if (!gpx) { g.strokeStyle = sl.avg; g.lineWidth = 0.8 / view.s; g.stroke(path); }
@@ -438,7 +511,7 @@
       g.setTransform(K, 0, 0, -K, OX, OY);
     }
     if (tintOn) {
-      const fp = fills(), tp = TINT[S.colour];
+      const fp = fills(), tp = tintPal()[S.colour];
       g.globalCompositeOperation = 'multiply'; g.globalAlpha = D.tint;
       for (let c = 0; c < fp.length; c++) if (fp[c]) { g.fillStyle = tp[c]; g.fill(fp[c]); }
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
@@ -484,7 +557,7 @@
     localToScreen(g); g.strokeStyle = PAL.ink; g.lineWidth = 1.6 / ES; g.lineJoin = 'round'; g.stroke(localPath());
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     if (D.guides) {
-      g.font = `500 11px ${FONT_M}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `500 ${Math.round(11 * TEXT_SCALE)}px ${FONT_M}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       for (let e = 0; e < 14; e++) {
         const a = BASE[e], b = BASE[(e + 1) % 14], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
         const [x, y] = l2e(mx, my), [nx, ny] = l2e(mx + (b[1] - a[1]) * 0.3, my - (b[0] - a[0]) * 0.3);
@@ -856,13 +929,16 @@
       $('gBannerB').hidden = !D.ownG;
     }
   }
+  let studioReturn = null;
   function openStudio(slot) {
+    studioReturn = document.activeElement;
     if (slot != null) D.slot = slot;
     studio.hidden = false; studioOpen = true; document.documentElement.classList.add('studio-open');
     syncStudio(); requestAnimationFrame(edResize);
     setTimeout(() => $('stDone').focus({ preventScroll: true }), 0);
   }
   function closeStudio() {
+    setTimeout(() => { if (studioReturn && document.contains(studioReturn)) studioReturn.focus({ preventScroll: true }); studioReturn = null; }, 0);
     studio.hidden = true; studioOpen = false; stroke = null; dragImg = null;
     document.documentElement.classList.remove('studio-open');
     renderThumbs(); request();
@@ -884,7 +960,11 @@
   $('removeG').addEventListener('click', dropGOwn);
   $('openStudio').addEventListener('click', () => openStudio());
   $('launchStudio').addEventListener('click', () => openStudio());
-  [$('thumb0'), $('thumb1')].forEach((t, k) => t.addEventListener('click', () => openStudio(k)));
+  [$('thumb0'), $('thumb1')].forEach((t, k) => {
+    t.setAttribute('role', 'button'); t.tabIndex = 0;
+    t.addEventListener('click', () => openStudio(k));
+    t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStudio(k); } });
+  });
 
   function syncDesign() {
     $('tDesign').checked = D.on; $('tOwnG').checked = D.ownG;
@@ -1211,10 +1291,14 @@
     $('xpImg').src = previewUrl;
     $('xpMsg').textContent = (name.endsWith('.pdf') ? 'This view cannot offer a PDF to save, so here is the same picture as a PNG. ' : 'This view cannot offer a file to save. ')
       + 'Right-click or long-press the picture to save it, or open Spectre Lab in claude.ai to save files directly.';
+    previewReturn = document.activeElement;
     $('xPreview').hidden = false; $('xpClose').focus();
     setXNote('Shown below as a picture');
   }
+  let previewReturn = null;
   function closePreview() {
+    if (previewReturn && document.contains(previewReturn)) previewReturn.focus({ preventScroll: true });
+    previewReturn = null;
     $('xPreview').hidden = true; $('xpImg').removeAttribute('src');
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   }
@@ -1334,6 +1418,23 @@
     const p = local(e), k = e.deltaMode === 1 ? 0.05 : 0.0018;
     zoomAt(p.x, p.y, Math.exp(-e.deltaY * k));
   }, { passive: false });
+  cv.addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const stepPx = e.shiftKey ? 160 : 48;
+    let handled = true;
+    switch (e.key) {
+      case 'ArrowLeft': V.ox += stepPx; break;
+      case 'ArrowRight': V.ox -= stepPx; break;
+      case 'ArrowUp': V.oy += stepPx; break;
+      case 'ArrowDown': V.oy -= stepPx; break;
+      case '+': case '=': zoomAt(W / 2, H / 2, 1.4); break;
+      case '-': case '_': zoomAt(W / 2, H / 2, 1 / 1.4); break;
+      case '0': fit(1); break;
+      case 'Enter': case ' ': { const i = nearestToCentre(); if (i >= 0) select(i); break; }
+      default: handled = false;
+    }
+    if (handled) { e.preventDefault(); request(); }
+  });
   $('zIn').addEventListener('click', () => zoomAt(W / 2, H / 2, 1.5));
   $('zOut').addEventListener('click', () => zoomAt(W / 2, H / 2, 1 / 1.5));
   $('zFit').addEventListener('click', () => fit(1));
@@ -1360,6 +1461,7 @@
     S.sel = i; hoverEdge = -1; pinNode = -1;
     if (!keepStep) { lastStep = null; cameEdge = -1; }
     renderInspector(-1); request();
+    if (i >= 0) announce('Selected. ' + readingText(cells(i)));
   }
   function walk(e) {
     let i = S.sel;
@@ -1382,6 +1484,7 @@
     lastStep = { out: C.tEdge(e), into: C.tEdge(ej), changed: h + 1, total: after.length };
     cameEdge = ej; S.sel = j; hoverEdge = -1; pinNode = -1;
     renderInspector(h); ensureVisible(j); request();
+    announce(`Crossed edge ${lastStep.out} into edge ${lastStep.into}; ${lastStep.changed} of ${lastStep.total} coordinates changed. ` + readingText(after));
     const btn = document.querySelector(`.edge[data-e="${e}"]`);
     if (btn && document.activeElement && document.activeElement.classList.contains('edge')) btn.focus();
   }
@@ -1394,10 +1497,10 @@
     cs.forEach((c, p) => {
       const fl = p <= flashUpTo ? ' flash' : '';
       if (c.kind === 'tile') {
-        h += `<button type="button" class="cell${c.dim ? ' dim' : ''}${fl}" data-node="-1" title="${c.dim ? 'Only Spectre of its hexagon' : 'Spectre ' + c.d + ' of its G hexagon'}"><span class="o">tile</span><span class="d">${c.d}</span><span class="t">${c.dim ? 'only' : 'of G'}</span></button>`;
+        h += `<button type="button" class="cell${c.dim ? ' dim' : ''}${fl}" data-node="-1" title="${c.dim ? 'Only Spectre of its hexagon' : 'Spectre ' + c.d + ' of its G hexagon'}" aria-label="${c.dim ? 'Only Spectre of its hexagon' : 'Spectre ' + c.d + ' of its G hexagon'}"><span class="o">tile</span><span class="d">${c.d}</span><span class="t">${c.dim ? 'only' : 'of G'}</span></button>`;
       } else {
         const g = C.GREEK[c.t], title = c.kind === 'root' ? `Root: ${ORD(c.order)}-order ${c.t} (${g}) hexagon` : `${ORD(c.order)}-order ${c.t} (${g}) hexagon, child ${c.d} of its parent`;
-        h += `<button type="button" class="cell${c.kind === 'root' ? ' root' : ''}${fl}" data-node="${c.node}" style="--sw:var(--t-${c.t})" title="${title}" aria-pressed="false"><span class="o">${ORD(c.order)}</span><span class="d">${c.d}</span><span class="t"><i></i>${c.kind === 'root' ? 'root' : c.t}</span></button>`;
+        h += `<button type="button" class="cell${c.kind === 'root' ? ' root' : ''}${fl}" data-node="${c.node}" style="--sw:var(--t-${c.t})" title="${title}" aria-label="${title}. Highlight it on the tiling" aria-pressed="false"><span class="o">${ORD(c.order)}</span><span class="d">${c.d}</span><span class="t"><i></i>${c.kind === 'root' ? 'root' : c.t}</span></button>`;
       }
     });
     h += '</div>';
@@ -1422,7 +1525,7 @@
       } else if (S.depth < MAXD) { to = 'grow'; cls += ' grow'; title = `Edge ${t} is on the patch rim; walking here adds substitution steps`; }
       else { to = 'rim'; dis = ' disabled'; title = `Edge ${t} is on the rim of the largest patch`; }
       if (e === cameEdge) cls += ' came';
-      h += `<button type="button" class="${cls}" data-e="${e}" title="${title}"${dis}><span class="n">${t}</span><span class="to">${to}</span></button>`;
+      h += `<button type="button" class="${cls}" data-e="${e}" title="${title}" aria-label="${title}"${dis}><span class="n">${t}</span><span class="to">${to}</span></button>`;
     }
     h += '</div></div>';
     h += '<div class="inline"><button type="button" class="btn" id="centreBtn">Focus on this Spectre</button><button type="button" class="btn" id="designBtn">Design this tile</button></div>';
@@ -1464,7 +1567,7 @@
       title.textContent = `Census · ${ORD(k)}-order hexagons`;
       h = '<thead><tr><th>Hexagon</th><th class="r">Count</th><th class="r">Share</th><th class="r">Limit</th></tr></thead><tbody>';
       for (const t of TYPES) {
-        h += `<tr><td><span class="sw" style="background:var(--t-${t})"></span>${t}<span class="gk">${C.GREEK[t]} ${C.GREEK_NAME[t]}</span></td><td class="r">${fmt(cnt[t])}</td><td class="r">${(100 * cnt[t] / list.length).toFixed(1)}%</td><td class="r">${(100 * C.FREQ[t]).toFixed(1)}%</td></tr>`;
+        h += `<tr><td>${swatch('--t-' + t, PAL.type[TIDX[t]], PAT_STYLES.type[TIDX[t]])}${t}<span class="gk">${C.GREEK[t]} ${C.GREEK_NAME[t]}</span></td><td class="r">${fmt(cnt[t])}</td><td class="r">${(100 * cnt[t] / list.length).toFixed(1)}%</td><td class="r">${(100 * C.FREQ[t]).toFixed(1)}%</td></tr>`;
       }
       h += '</tbody>';
       note.innerHTML = k === 1
@@ -1475,7 +1578,7 @@
       title.textContent = 'Census · four-colouring';
       const names = ['First hexagon colour', 'Second hexagon colour', 'Third hexagon colour', 'Turned G halves'];
       h = '<thead><tr><th>Colour</th><th class="r">Spectres</th><th class="r">Share</th></tr></thead><tbody>';
-      names.forEach((n, i) => { h += `<tr><td><span class="sw" style="background:var(--c4-${i})"></span>${n}</td><td class="r">${fmt(c[i])}</td><td class="r">${(100 * c[i] / P.N).toFixed(1)}%</td></tr>`; });
+      names.forEach((n, i) => { h += `<tr><td>${swatch('--c4-' + i, PAL.four[i], PAT_STYLES.four[i])}${n}</td><td class="r">${fmt(c[i])}</td><td class="r">${(100 * c[i] / P.N).toFixed(1)}%</td></tr>`; });
       h += '</tbody>';
       note.innerHTML = 'The 1st-order hexagons form a hexagonal grid, so three colours alternate around each one. The turned G halves never touch one another, so they share the fourth.';
     } else if (S.colour === 'orient') {
@@ -1484,7 +1587,7 @@
       h = '<thead><tr><th>Rotation</th><th class="r">Spectres</th><th class="r">Share</th></tr></thead><tbody>';
       for (let r = 0; r < 7; r++) {
         const lab = r < 6 ? `${r * 60}°` : 'Odd multiples of 30°';
-        h += `<tr><td><span class="sw" style="background:var(--o-${r < 6 ? r : 'odd'})"></span>${lab}</td><td class="r">${fmt(c[r])}</td><td class="r">${(100 * c[r] / P.N).toFixed(1)}%</td></tr>`;
+        h += `<tr><td>${swatch('--o-' + (r < 6 ? r : 'odd'), PAL.orient[r], PAT_STYLES.orient[r])}${lab}</td><td class="r">${fmt(c[r])}</td><td class="r">${(100 * c[r] / P.N).toFixed(1)}%</td></tr>`;
       }
       h += '</tbody>';
       note.innerHTML = 'Every hexagon places its Spectre at a multiple of 60°. Only the second Spectre of a G is turned a further 30°, so the odd rotations mark exactly those tiles.';
@@ -1540,6 +1643,8 @@
     press(os, S.outline);
     sel.value = S.seed;
     const sd = SEEDS.find(s => s.id === S.seed), root = P.nodes.type[0];
+    const colourName = { type: `hexagon type at order ${Math.min(S.torder, S.depth + 1)}`, four: 'four colours', orient: 'rotation', plain: 'a single colour' }[S.colour];
+    cv.setAttribute('aria-label', `Spectre tiling: ${fmt(P.N)} tiles, ${S.depth} substitution steps, coloured by ${colourName}${D.on ? ', showing your tile design' : ''}.`);
     $('caption').innerHTML = `<b>${fmt(P.N)}</b> Spectres · ${S.depth} step${S.depth > 1 ? 's' : ''} · root ${root} · seed ${S.seed === 'R' ? '#' + S.rseed : sd.short}`;
     $('patchNote').innerHTML = `<b>${fmt(P.N)}</b> Spectres inside one ${ORD(S.depth + 1)}-order <b>${root}</b> (${C.GREEK[root]}) hexagon. ` +
       (S.seed === 'R' ? `Ancestry #${S.rseed} is made up one level at a time, weighted by how common each hexagon type is.`
@@ -1564,6 +1669,38 @@
     requestAnimationFrame(() => setTimeout(() => { try { fn(); } finally { b.hidden = true; } }, 16));
   }
 
+  // ---------- accessibility controls ----------
+  seg($('paletteSeg'), [{ v: 'standard', label: 'Standard' }, { v: 'cvd', label: 'Colour-blind safe' }], v => { A.palette = v; a11yChanged(); });
+  seg($('textSeg'), [{ v: '100', label: '100%' }, { v: '125', label: '125%' }, { v: '150', label: '150%' }], v => { A.text = v; a11yChanged(); });
+  $('tPatterns').addEventListener('change', e => { A.patterns = e.target.checked; a11yChanged(); });
+  $('tBold').addEventListener('change', e => { A.bold = e.target.checked; a11yChanged(); });
+  function syncA11y() {
+    press($('paletteSeg'), A.palette); press($('textSeg'), A.text);
+    $('tPatterns').checked = A.patterns; $('tBold').checked = A.bold;
+    $('a11yNote').textContent = (A.palette === 'cvd'
+      ? 'Colour-blind safe colours are based on the Okabe–Ito set and checked against simulated red-, green- and blue-blind vision. '
+      : 'Standard colours follow Tatham’s diagrams; some pairs are hard to tell apart with colour-blindness. ')
+      + (A.patterns ? 'Patterns give every colour its own texture, so tile types can be told apart without colour.' : 'Patterns add a texture to each colour as a second cue.');
+  }
+  function a11yChanged() {
+    applyA11y(); saveA11y(); syncA11y();
+    renderCensus(); renderThumbs(); request(); edRequest();
+  }
+  // keyboard: move the picture in the studio with the arrow keys
+  let keyMove = false;
+  ed.addEventListener('keydown', e => {
+    const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }, d = dirs[e.key];
+    if (!d) return;
+    const sl = cur();
+    e.preventDefault();
+    if (gLocked()) { note('Tap “Give them their own design” first'); return; }
+    if (D.tool !== 'move' || !sl.img) { note(sl.img ? 'Choose Move picture to move it with the arrow keys' : 'Add a picture first'); return; }
+    if (!keyMove) { pushUndo(sl); keyMove = true; }
+    const st = e.shiftKey ? 0.25 : 0.05;
+    sl.imgT.x += d[0] * st; sl.imgT.y += d[1] * st; changed(sl);
+  });
+  ed.addEventListener('keyup', e => { if (keyMove && e.key.startsWith('Arrow')) { keyMove = false; changed(cur(), true); } });
+
   // ---------- theme ----------
   const onTheme = () => { readPalette(); request(); renderThumbs(); edRequest(); };
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme); } catch (_) {}
@@ -1572,6 +1709,9 @@
 
   // ---------- boot ----------
   function start(data) {
+    if (!document.documentElement.lang) document.documentElement.lang = 'en';
+    document.querySelectorAll('.tog input[type="checkbox"]').forEach(i => i.setAttribute('role', 'switch'));
+    loadA11y(); applyA11y(); syncA11y();
     const saved = data && data.S;
     if (saved) Object.assign(S, saved, { sel: -1 });
     readPalette();
