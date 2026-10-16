@@ -322,9 +322,9 @@
              avg: '#e9e3d7', pats: new Map(), undo: [], edited: false, loops: false, loopsInk: '#1d4f9a' };
   }
   const avgC = mk(24), avgG = avgC.getContext('2d', { willReadFrequently: true });
-  function compose(sl) {
-    const g = sl.tctx;
-    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  // Paints a design in texture pixels under whatever transform the context already has,
+  // so the same code fills the texture and a full-resolution single-tile export.
+  function paintDesign(g, sl) {
     g.fillStyle = sl.bg; g.fillRect(0, 0, TEXN, TEXN);
     if (sl.img) {
       g.save(); g.translate(lx2px(sl.imgT.x), ly2py(sl.imgT.y)); g.rotate(sl.imgT.r * Math.PI / 180);
@@ -333,7 +333,12 @@
       g.imageSmoothingQuality = 'high'; g.drawImage(sl.img, -w / 2, -h / 2, w, h); g.restore();
     }
     if (sl.loops) drawLoops(g, sl.loopsInk);
-    g.drawImage(sl.draw, 0, 0);
+    g.imageSmoothingQuality = 'high'; g.drawImage(sl.draw, 0, 0);
+  }
+  function compose(sl) {
+    const g = sl.tctx;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    paintDesign(g, sl);
     avgG.clearRect(0, 0, 24, 24); avgG.drawImage(sl.tex, 0, 0, 24, 24);
     const d = avgG.getImageData(0, 0, 24, 24).data; let r = 0, gg = 0, b = 0, n = 0;
     for (let v = 0; v < 24; v++) for (let u = 0; u < 24; u++) {
@@ -355,9 +360,9 @@
 
   // Edge loops (optional): an arc round alternate corners joins the midpoints of neighbouring edges,
   // meeting each edge square-on, so every arc carries on into the next tile.
-  // Draws into a context whose transform is the identity in texture pixels.
+  // Draws in texture pixels, on top of the context's current transform.
   function drawLoops(g, ink) {
-    g.save(); g.setTransform(...TO_PX); g.strokeStyle = ink; g.lineWidth = 0.13; g.lineCap = 'butt';
+    g.save(); g.transform(...TO_PX); g.strokeStyle = ink; g.lineWidth = 0.13; g.lineCap = 'butt';
     for (let e = STARTER_PAR; e < 14; e += 2) {
       const a = BASE[e], v = BASE[(e + 1) % 14], b = BASE[(e + 2) % 14];
       const din = Math.atan2(v[1] - a[1], v[0] - a[0]), dout = Math.atan2(b[1] - v[1], b[0] - v[0]);
@@ -983,7 +988,9 @@
   }
 
   // ---------- export: PNG or a one-page PDF of the view or the whole patch ----------
-  const X = { area: 'view', format: 'png', size: 4000, page: 'a4', transparent: false, overlays: true, busy: false };
+  const X = { area: 'view', format: 'png', size: 4000, page: 'a4', transparent: false, transTouched: false, overlays: true,
+              tileSlot: 0, edgeMm: 30, busy: false };
+  const TILE_M = 0.2;     // margin round a single tile, in edge lengths: room for curved edges and the outline
   const PAGES = { a4: { pt: [595.28, 841.89], label: 'A4' }, a3: { pt: [841.89, 1190.55], label: 'A3' }, letter: { pt: [612, 792], label: 'Letter' } };
   const PDF_MARGIN = 28.35, PDF_CAPTION = 14, PDF_DPI = 300;
   let downloadsApi = null, previewUrl = null;
@@ -1027,6 +1034,59 @@
     try { c.toBlob(b => b ? res(b) : rej(new Error('too-large')), type, q); } catch (_) { rej(new Error('too-large')); }
   });
 
+  // ---- a single tile: the design on one Spectre, at its own orientation ----
+  function renderTile(k, sl, bg, outline) {
+    const cw = Math.max(1, Math.round((BB.w + 2 * TILE_M) * k)), ch = Math.max(1, Math.round((BB.h + 2 * TILE_M) * k));
+    const c = mk(cw, ch), g = c.getContext('2d');
+    if (!g) throw new Error('too-large');
+    if (bg) { g.fillStyle = bg; g.fillRect(0, 0, cw, ch); }
+    const L = () => g.setTransform(k, 0, 0, -k, (TILE_M - BB.x0) * k, (BB.y1 + TILE_M) * k);
+    g.save(); L(); g.clip(localPath());
+    g.setTransform(k / RES, 0, 0, k / RES, (C0[0] - RH - BB.x0 + TILE_M) * k, (BB.y1 + TILE_M - C0[1] - RH) * k);
+    paintDesign(g, sl);
+    g.restore();
+    if (outline) { L(); g.strokeStyle = D.groutColour; g.lineWidth = Math.max(0.02, 2 / k); g.lineJoin = 'round'; g.stroke(localPath()); }
+    return c;
+  }
+  // Printed at true size: the tile's edges are X.edgeMm long. Landscape suits the tile's shape.
+  function tileLayout() {
+    const u = X.edgeMm * 72 / 25.4, [ph, pw] = PAGES[X.page].pt;
+    const tw = BB.w * u, th = BB.h * u, barH = 24;
+    const aw = pw - 2 * PDF_MARGIN, ah = ph - 2 * PDF_MARGIN - PDF_CAPTION - barH;
+    const ox = (pw - tw) / 2, oy = PDF_MARGIN + PDF_CAPTION + barH + (ah - th) / 2;
+    return { u, pw, ph, tw, th, ox, oy, fits: tw <= aw && th <= ah, wmm: BB.w * X.edgeMm, hmm: BB.h * X.edgeMm };
+  }
+  function tileOutlinePath(L) {
+    const pt = ([x, y]) => (L.ox + (x - BB.x0) * L.u).toFixed(2) + ' ' + (L.oy + (y - BB.y0) * L.u).toFixed(2);
+    let path = pt(BASE[0]) + ' m\n';
+    for (let e = 0; e < 14; e++) {
+      const a = BASE[e], b = BASE[(e + 1) % 14];
+      if (S.curved) {
+        const q = bulgeCtrl(a[0], a[1], b[0], b[1], e);
+        const c1 = [a[0] + 2 / 3 * (q[0] - a[0]), a[1] + 2 / 3 * (q[1] - a[1])], c2 = [b[0] + 2 / 3 * (q[0] - b[0]), b[1] + 2 / 3 * (q[1] - b[1])];
+        path += `${pt(c1)} ${pt(c2)} ${pt(b)} c\n`;
+      } else path += pt(b) + ' l\n';
+    }
+    return path + 'h\n';
+  }
+  function tileVectorOps(L) {
+    const path = tileOutlinePath(L);
+    const rgb = hexRGB(D.groutColour).map(v => (v / 255).toFixed(3)).join(' ');
+    let ops = X.overlays ? `q ${rgb} RG 0.6 w 1 j ${path}S Q\n` : '';
+    // a 50 mm bar to check the printer kept the size
+    const bx = PDF_MARGIN, by = PDF_MARGIN + PDF_CAPTION + 8, bl = 50 * 72 / 25.4;
+    ops += `q 0 0 0 RG 0.8 w ${bx} ${by} m ${(bx + bl).toFixed(2)} ${by} l S ${bx} ${by - 3} m ${bx} ${by + 3} l S ${(bx + bl).toFixed(2)} ${by - 3} m ${(bx + bl).toFixed(2)} ${by + 3} l S Q\n`;
+    ops += `BT /F1 7 Tf 0 0 0 rg ${(bx + bl + 6).toFixed(2)} ${by - 2.5} Td (50 mm: measure this to check the print is actual size) Tj ET\n`;
+    return ops;
+  }
+  function tileFileBase() { return `spectre-lab-tile${X.tileSlot ? '-g-halves' : ''}${X.format === 'pdf' ? '-' + X.edgeMm + 'mm' : ''}`; }
+  function tileCaption() {
+    const L = tileLayout();
+    return `Spectre tile${X.tileSlot ? ' (turned G halves)' : ''} - edge ${X.edgeMm} mm, ${L.wmm.toFixed(1)} x ${L.hmm.toFixed(1)} mm - print at actual size (100%, not fit to page) - Spectre Lab v${BUILD.version}`;
+  }
+  function tileFits() { return !(X.area === 'tile' && X.format === 'pdf') || tileLayout().fits; }
+  function xGoState() { $('xGo').disabled = X.busy || !tileFits(); }
+
   function buildPdf(jpeg, iw, ih, pageKey, cap) {
     return FileFormats.buildPdf({ jpeg, width: iw, height: ih, page: PAGES[pageKey].pt, margin: PDF_MARGIN, captionHeight: PDF_CAPTION,
       caption: cap, title: 'Spectre tiling', creator: `Spectre Lab ${BUILD.version} (build ${BUILD.hash})` });
@@ -1040,12 +1100,30 @@
   function setXNote(t) { $('xNote').textContent = t; }
   function syncExport() {
     if (!P || !W) return;
-    press($('xArea'), X.area); press($('xFormat'), X.format); press($('xSize'), X.size); press($('xPage'), X.page);
+    const tile = X.area === 'tile';
+    if (!D.ownG) X.tileSlot = 0;
+    press($('xArea'), X.area); press($('xFormat'), X.format); press($('xSize'), X.size); press($('xPage'), X.page); press($('xTile'), X.tileSlot);
     $('xSizeRow').hidden = X.format !== 'png'; $('xPageRow').hidden = X.format !== 'pdf';
     $('xTransRow').hidden = X.format !== 'png';
+    $('xTileRow').hidden = !tile || !D.ownG;
+    $('xEdgeRow').hidden = !(tile && X.format === 'pdf');
+    $('xEdge').value = X.edgeMm; $('xEdgeVal').textContent = X.edgeMm;
+    $('xOverlaysLbl').textContent = tile ? 'Tile outline' : 'Outlines and letters';
     $('xOverlays').checked = X.overlays; $('xTrans').checked = X.transparent;
     $('xGo').textContent = X.format === 'png' ? 'Save PNG' : 'Save PDF';
+    xGoState();
     if (X.busy) return;
+    if (tile) {
+      if (X.format === 'png') {
+        const k = X.size / (BB.w + 2 * TILE_M);
+        setXNote(`${fmt(X.size)} × ${fmt(Math.round((BB.h + 2 * TILE_M) * k))} px${X.transparent ? ', transparent around the tile' : ''}`);
+      } else {
+        const L = tileLayout();
+        setXNote(L.fits ? `Tile ${L.wmm.toFixed(1)} × ${L.hmm.toFixed(1)} mm on ${PAGES[X.page].label} landscape, printed at actual size`
+                        : `Too big for ${PAGES[X.page].label} at ${X.edgeMm} mm per edge. Choose a larger page or a shorter edge.`);
+      }
+      return;
+    }
     if (X.format === 'png') {
       const pl = exportPlan(X.size);
       setXNote(`${fmt(Math.round(pl.w * pl.dpr))} × ${fmt(Math.round(pl.h * pl.dpr))} px`);
@@ -1059,6 +1137,7 @@
     X.busy = true; $('xGo').disabled = true; setXNote('Rendering…');
     await new Promise(r => requestAnimationFrame(() => setTimeout(r, 30)));
     try {
+      if (X.area === 'tile') { await exportTile(); return; }
       if (X.format === 'png') {
         const c = renderExport(X.size, X.transparent ? null : PAL.stage);
         const raw = new Uint8Array(await (await toBlob(c, 'image/png')).arrayBuffer());
@@ -1073,7 +1152,28 @@
     } catch (e) {
       X.busy = false; syncExport();
       setXNote(e && e.message === 'too-large' ? 'That size is too large for this device. Choose a smaller one.' : 'The export did not work. Try a smaller size.');
-    } finally { X.busy = false; $('xGo').disabled = false; }
+    } finally { X.busy = false; xGoState(); }
+  }
+  async function exportTile() {
+    const sl = D.slots[X.tileSlot] || D.slots[0];
+    const sw = `Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})`;
+    if (X.format === 'png') {
+      const c = renderTile(X.size / (BB.w + 2 * TILE_M), sl, X.transparent ? null : PAL.stage, X.overlays);
+      const raw = new Uint8Array(await (await toBlob(c, 'image/png')).arrayBuffer());
+      const png = FileFormats.addPngText(raw, { Title: 'Spectre tile', Description: tileCaption().replace(/ - print at.*? - /, ' - '), Software: sw });
+      await offer(tileFileBase() + '.png', new Blob([png], { type: 'image/png' }), c);
+      return;
+    }
+    const L = tileLayout();
+    if (!L.fits) { setXNote(`Too big for ${PAGES[X.page].label} at ${X.edgeMm} mm per edge.`); return; }
+    const k = Math.min(L.u / 72 * PDF_DPI, 4800 / (BB.w + 2 * TILE_M));          // about 300 dpi at the printed size
+    const c = renderTile(k, sl, '#ffffff', false);
+    const jpg = new Uint8Array(await (await toBlob(c, 'image/jpeg', 0.92)).arrayBuffer());
+    const pdf = FileFormats.buildPdf({ jpeg: jpg, width: c.width, height: c.height, page: PAGES[X.page].pt, landscape: true,
+      margin: PDF_MARGIN, captionHeight: PDF_CAPTION, caption: tileCaption(), title: 'Spectre tile', creator: `Spectre Lab ${BUILD.version} (build ${BUILD.hash})`,
+      place: { x: L.ox - TILE_M * L.u, y: L.oy - TILE_M * L.u, w: (BB.w + 2 * TILE_M) * L.u, h: (BB.h + 2 * TILE_M) * L.u },
+      clip: tileOutlinePath(L), extra: tileVectorOps(L) });
+    await offer(tileFileBase() + '.pdf', new Blob([pdf], { type: 'application/pdf' }), c);
   }
   async function offer(name, blob, canvas) {
     if (downloadsApi) {
@@ -1099,12 +1199,19 @@
     $('xPreview').hidden = true; $('xpImg').removeAttribute('src');
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   }
-  seg($('xArea'), [{ v: 'view', label: 'Current view' }, { v: 'patch', label: 'Whole patch' }], v => { X.area = v; syncExport(); });
+  seg($('xArea'), [{ v: 'view', label: 'Current view' }, { v: 'patch', label: 'Whole patch' }, { v: 'tile', label: 'Single tile' }], v => {
+    X.area = v;
+    if (v === 'tile' && !X.transTouched) X.transparent = true;   // a lone tile reads best on transparency
+    syncExport();
+  });
+  seg($('xTile'), [{ v: 0, label: 'Every Spectre' }, { v: 1, label: 'Turned G halves' }], v => { X.tileSlot = +v; syncExport(); });
+  $('xEdge').addEventListener('input', e => { X.edgeMm = +e.target.value; syncExport(); });
+  addStepper($('xEdge'), 1, 'edge length');
   seg($('xFormat'), [{ v: 'png', label: 'PNG' }, { v: 'pdf', label: 'PDF' }], v => { X.format = v; syncExport(); });
   seg($('xSize'), [2000, 4000, 8000].map(n => ({ v: n, label: fmt(n) + ' px' })), v => { X.size = +v; syncExport(); });
   seg($('xPage'), Object.keys(PAGES).map(k => ({ v: k, label: PAGES[k].label })), v => { X.page = v; syncExport(); });
   $('xOverlays').addEventListener('change', e => { X.overlays = e.target.checked; });
-  $('xTrans').addEventListener('change', e => { X.transparent = e.target.checked; });
+  $('xTrans').addEventListener('change', e => { X.transparent = e.target.checked; X.transTouched = true; syncExport(); });
   $('xGo').addEventListener('click', doExport);
   $('xpClose').addEventListener('click', closePreview);
   $('xPreview').addEventListener('click', e => { if (e.target.id === 'xPreview') closePreview(); });

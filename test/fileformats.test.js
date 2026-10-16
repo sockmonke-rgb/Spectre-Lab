@@ -50,3 +50,21 @@ test('PDF cross-reference offsets point at their objects', () => {
   assert.match(s, /\(Spectre tiling \\\(test\\\) - v9\.9\.9\) Tj/);  // escaped caption
   assert.match(s, /\/CreationDate \(D:20261016000000Z\)/);
 });
+
+test('PDF can place the picture exactly and add vector drawing', () => {
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const pdf = F.buildPdf({ jpeg, width: 100, height: 60, page: [595.28, 841.89], landscape: true, margin: 28.35, captionHeight: 14,
+    caption: 'tile', title: 'Spectre tile', creator: 'test', place: { x: 100, y: 120, w: 300, h: 180 }, extra: '0 0 m 10 10 l S\n' });
+  const s = latin1(pdf);
+  assert.match(s, /\/MediaBox \[0 0 841\.89 595\.28\]/);
+  assert.match(s, /q 300\.00 0 0 180\.00 100\.00 120\.00 cm \/Im0 Do Q\n0 0 m 10 10 l S\nBT \/F1 8 Tf 0\.35 0\.37 0\.42 rg 28\.35 28\.35 Td \(tile\) Tj ET/);
+  const xref = Number(/startxref\n(\d+)\n/.exec(s)[1]);
+  const rows = s.slice(xref).split('\n').slice(3, 10);
+  rows.forEach((row, k) => assert.equal(s.slice(Number(row.slice(0, 10))).split('\n')[0], `${k + 1} 0 obj`));
+});
+
+test('PDF can clip the picture to a path', () => {
+  const pdf = F.buildPdf({ jpeg: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), width: 10, height: 10, page: [595.28, 841.89], margin: 28.35, captionHeight: 14,
+    place: { x: 0, y: 0, w: 10, h: 10 }, clip: '0 0 m 10 0 l 10 10 l h\n' });
+  assert.match(latin1(pdf), /q\n0 0 m 10 0 l 10 10 l h\nW n\nq 10\.00 0 0 10\.00 0\.00 0\.00 cm \/Im0 Do Q\nQ\n/);
+});

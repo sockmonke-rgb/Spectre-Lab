@@ -43,19 +43,29 @@ const FileFormats = (function () {
     return `D:${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
   }
 
-  // One page holding the JPEG, centred inside the margins, with a one-line caption underneath.
-  // o = { jpeg, width, height, page: [w, h] in points (portrait), margin, captionHeight,
-  //       caption, title, creator, date }
+  // One page holding the JPEG with a one-line caption underneath. By default the picture is centred
+  // inside the margins; `place` puts it at an exact position and size instead (for printing to scale).
+  // `clip` is a raw PDF path (without a painting operator) that the picture is clipped to.
+  // `extra` is raw PDF drawing operators (font /F1 available), drawn over the picture.
+  // o = { jpeg, width, height, page: [w, h] in points (portrait), landscape?, margin, captionHeight,
+  //       caption, title, creator, date, place?: {x, y, w, h}, clip?, extra? }
   function buildPdf(o) {
-    let [pw, ph] = o.page; if (o.width > o.height) [pw, ph] = [ph, pw];
+    let [pw, ph] = o.page;
+    if (o.landscape !== undefined ? o.landscape : o.width > o.height) [pw, ph] = [ph, pw];
     const margin = o.margin, capH = o.captionHeight;
     const aw = pw - 2 * margin, ah = ph - 2 * margin - capH;
-    const sc = Math.min(aw / o.width, ah / o.height), dw = o.width * sc, dh = o.height * sc;
-    const dx = (pw - dw) / 2, dy = margin + capH + (ah - dh) / 2;
+    let dx, dy, dw, dh;
+    if (o.place) ({ x: dx, y: dy, w: dw, h: dh } = o.place);
+    else {
+      const sc = Math.min(aw / o.width, ah / o.height); dw = o.width * sc; dh = o.height * sc;
+      dx = (pw - dw) / 2; dy = margin + capH + (ah - dh) / 2;
+    }
+    const capX = o.place ? margin : dx;
     const f = n => n.toFixed(2);
     const str = t => '(' + ascii(t).replace(/[\\()]/g, '\\$&') + ')';
-    const content = `q ${f(dw)} 0 0 ${f(dh)} ${f(dx)} ${f(dy)} cm /Im0 Do Q\n` +
-      (o.caption ? `BT /F1 8 Tf 0.35 0.37 0.42 rg ${f(dx)} ${f(margin)} Td ${str(o.caption)} Tj ET\n` : '');
+    const image = `q ${f(dw)} 0 0 ${f(dh)} ${f(dx)} ${f(dy)} cm /Im0 Do Q\n`;
+    const content = (o.clip ? `q\n${o.clip}W n\n${image}Q\n` : image) + (o.extra || '') +
+      (o.caption ? `BT /F1 8 Tf 0.35 0.37 0.42 rg ${f(capX)} ${f(margin)} Td ${str(o.caption)} Tj ET\n` : '');
     const parts = [], offs = []; let len = 0;
     const push = u => { parts.push(u); len += u.length; };
     const obj = (n, body, stream) => {

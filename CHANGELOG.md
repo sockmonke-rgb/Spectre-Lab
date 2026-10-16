@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 — 2026-10-16
+
+- Export a single tile: your tile design on one Spectre.
+  - PNG at 2,000 to 8,000 px across, transparent around the tile by default, with an optional outline in the grout colour.
+  - PDF printed at actual size: choose the edge length (5 to 120 mm) and page. The outline is a vector line you can cut along, and a 50 mm bar lets you check the printer kept the size. The page says when the tile is too big for it.
+  - With a separate design for the turned G halves, choose which design to export.
+- The picture and drawing are painted afresh at the export size, so a large tile export stays sharp.
+
 ## 1.5.0 — 2026-10-16
 
 - Tile studio: Mirror ↔ and Flip ↕ buttons for the picture. They work as seen on screen, about the picture's centre, even when it is turned, and each is one undo step. Fit picture keeps the mirroring; a new picture starts unmirrored.
