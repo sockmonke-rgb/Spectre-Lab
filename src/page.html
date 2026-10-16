@@ -1,0 +1,364 @@
+<title>Spectre Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a framed plate holding the live tiling, beside a narrow instrument column; stacks on phones. */
+:root {
+  --paper: #eef0f4; --panel: #f8f9fb; --ink: #171b29; --muted: #586073; --rule: #d6dbe3;
+  --accent: #2c3f9e; --accent-soft: #e2e7f8; --halo: #ffffff; --stage: #e3e7ee;
+  --grout: #232838; --super: #121624; --chip: rgba(248,249,251,.9);
+  --t-G: #f28b82; --t-G1: #cf463d; --t-D: #86e1e8; --t-J: #ec90e0; --t-L: #8f919a; --t-X: #c094ef;
+  --t-P: #8b94ee; --t-S: #8edc91; --t-F: #f7c38f; --t-Y: #f3e682;
+  --c4-0: #efd07c; --c4-1: #e99c91; --c4-2: #9bceb2; --c4-3: #3349c2;
+  --o-0: #e9a69e; --o-1: #e8cf93; --o-2: #bbd79b; --o-3: #94cfc8; --o-4: #a4b1e6; --o-5: #d1a5dd; --o-odd: #1b2033;
+  --plain: #dde2ea;
+  --f-display: "Spectral", "Iowan Old Style", Georgia, serif;
+  --f-ui: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111319; --panel: #161921; --ink: #e6e8ef; --muted: #9ba2b5; --rule: #292e3b;
+    --accent: #a9b7ff; --accent-soft: #232a48; --halo: #0d0f15; --stage: #0e1016;
+    --grout: #06070b; --super: #eef0f7; --chip: rgba(22,25,33,.9);
+    --t-G: #b6605a; --t-G1: #e16a61; --t-D: #4a9ea5; --t-J: #a55f9f; --t-L: #60636d; --t-X: #8566b3;
+    --t-P: #5d65b6; --t-S: #569d5b; --t-F: #b6875b; --t-Y: #ada34e;
+    --c4-0: #a38b4c; --c4-1: #a3665e; --c4-2: #5a8b71; --c4-3: #8a98ff;
+    --o-0: #a1645d; --o-1: #a48c58; --o-2: #7e985d; --o-3: #568f88; --o-4: #6672a7; --o-5: #8e669c; --o-odd: #f1f2fa;
+    --plain: #2a2f3b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111319; --panel: #161921; --ink: #e6e8ef; --muted: #9ba2b5; --rule: #292e3b;
+  --accent: #a9b7ff; --accent-soft: #232a48; --halo: #0d0f15; --stage: #0e1016;
+  --grout: #06070b; --super: #eef0f7; --chip: rgba(22,25,33,.9);
+  --t-G: #b6605a; --t-G1: #e16a61; --t-D: #4a9ea5; --t-J: #a55f9f; --t-L: #60636d; --t-X: #8566b3;
+  --t-P: #5d65b6; --t-S: #569d5b; --t-F: #b6875b; --t-Y: #ada34e;
+  --c4-0: #a38b4c; --c4-1: #a3665e; --c4-2: #5a8b71; --c4-3: #8a98ff;
+  --o-0: #a1645d; --o-1: #a48c58; --o-2: #7e985d; --o-3: #568f88; --o-4: #6672a7; --o-5: #8e669c; --o-odd: #f1f2fa;
+  --plain: #2a2f3b; color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--f-ui); font-size: 14px; line-height: 1.45;
+  box-sizing: border-box; padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+*, *::before, *::after { box-sizing: border-box; }
+button, select, input { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 368px; gap: 16px; }
+
+/* ---------- stage ---------- */
+.stage { position: relative; min-width: 0; min-height: 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--stage); }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; display: block; }
+#cv.dragging { cursor: grabbing; }
+.chip { position: absolute; background: var(--chip); border: 1px solid var(--rule); border-radius: 7px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.caption { top: 10px; left: 10px; padding: 6px 10px; font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; max-width: calc(100% - 20px); }
+.caption b { color: var(--ink); font-weight: 500; }
+.hint { bottom: 10px; left: 10px; padding: 5px 9px; font-size: 12px; color: var(--muted); max-width: calc(100% - 150px); }
+.zoom { bottom: 10px; right: 10px; display: flex; padding: 3px; gap: 2px; }
+.zoom button { border: 0; background: transparent; min-width: 34px; height: 30px; border-radius: 5px; cursor: pointer; font-weight: 600; padding: 0 8px; }
+.zoom button:hover { background: var(--accent-soft); }
+.busy { top: 10px; right: 10px; padding: 5px 10px; font-size: 12px; color: var(--accent); }
+
+/* ---------- panel ---------- */
+.panel { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; padding: 4px 4px 24px 2px; }
+.brand { display: flex; gap: 14px; align-items: center; }
+.glyph { width: 52px; height: auto; flex: none; }
+.glyph path { fill: var(--t-F); stroke: var(--ink); stroke-width: .09; stroke-linejoin: round; }
+.build { margin: 6px 0 0; font-family: var(--f-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.build .ver { color: var(--ink); background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; margin-right: 7px; font-weight: 500; }
+h1 { font-family: var(--f-display); font-weight: 600; font-size: 30px; line-height: 1; margin: 0 0 4px; letter-spacing: -.01em; text-wrap: balance; }
+.sub { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.group { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.eyebrow { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; flex-direction: column; gap: 5px; }
+.lbl { font-size: 12.5px; color: var(--muted); }
+.note { margin: 0; font-size: 12.5px; color: var(--muted); }
+.note b { color: var(--ink); font-weight: 600; }
+
+.seg { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--rule); border-radius: 7px; background: var(--panel); padding: 2px; width: fit-content; max-width: 100%; }
+.seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 13px; min-width: 32px; font-variant-numeric: tabular-nums; }
+.seg button:hover { background: var(--accent-soft); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.seg button:disabled { opacity: .35; cursor: default; background: transparent; }
+
+.seedwrap { display: flex; gap: 8px; flex-wrap: wrap; }
+select { border: 1px solid var(--rule); background: var(--panel); border-radius: 7px; padding: 6px 8px; min-width: 0; flex: 1 1 180px; }
+.btn { border: 1px solid var(--rule); background: var(--panel); border-radius: 7px; padding: 6px 11px; cursor: pointer; font-size: 13px; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.toggles { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.tog { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; }
+.tog input { appearance: none; -webkit-appearance: none; width: 30px; height: 18px; border-radius: 9px; background: var(--rule); position: relative; cursor: pointer; margin: 0; transition: background .15s; flex: none; }
+.tog input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.tog input:checked { background: var(--accent); }
+.tog input:checked::after { transform: translateX(12px); }
+
+/* coordinates ladder */
+.coordhead { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--f-mono); }
+.coords { display: flex; gap: 4px; flex-wrap: wrap; }
+.cell { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 1px solid var(--rule); background: var(--panel); border-radius: 7px; padding: 6px 4px 5px; min-width: 42px; flex: 1 1 42px; cursor: default; }
+.cell:hover, .cell:focus-visible { border-color: var(--accent); }
+.cell .d { font-family: var(--f-mono); font-size: 19px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.cell .t { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; }
+.cell .t i { width: 9px; height: 9px; border-radius: 2px; background: var(--sw, var(--rule)); border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent); }
+.cell .o { font-size: 10px; color: var(--muted); font-family: var(--f-mono); }
+.cell.root .d { font-family: var(--f-display); font-weight: 600; }
+.cell.dim .d { color: var(--muted); }
+.cell.flash { animation: flash 1.1s ease-out; }
+@keyframes flash { 0% { background: var(--accent); color: var(--panel); } 100% { background: var(--panel); } }
+.reading { margin: 0; font-family: var(--f-display); font-size: 15px; line-height: 1.45; }
+.reading em { font-style: italic; }
+
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12.5px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.facts dd small { font-family: var(--f-ui); color: var(--muted); font-size: 11.5px; }
+
+.walkhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.step { font-family: var(--f-mono); font-size: 11.5px; color: var(--accent); }
+.edges { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.edge { border: 1px solid var(--rule); background: var(--panel); border-radius: 6px; padding: 5px 0 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+.edge:hover:not(:disabled), .edge:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.edge .n { font-family: var(--f-mono); font-weight: 500; font-size: 14px; line-height: 1.1; }
+.edge .to { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.edge.grow .to { color: var(--accent); }
+.edge:disabled { opacity: .45; cursor: default; }
+.edge.came { border-color: var(--accent); }
+.empty { margin: 0; color: var(--muted); font-size: 13px; }
+
+table.census { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.census th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; padding: 0 0 4px; border-bottom: 1px solid var(--rule); }
+.census th.r, .census td.r { text-align: right; }
+.census td { padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); }
+.census td.r { font-family: var(--f-mono); font-size: 11.5px; }
+.census .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 7px; border: 1px solid color-mix(in srgb, var(--ink) 30%, transparent); }
+.census .gk { font-family: var(--f-display); color: var(--muted); margin-left: 4px; }
+
+.about p { margin: 0; font-size: 13px; line-height: 1.55; max-width: 62ch; }
+.about a { color: var(--accent); text-underline-offset: 2px; }
+.mono { font-family: var(--f-mono); font-size: 12px; }
+
+/* ---------- tile design ---------- */
+.btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.btn.primary:hover { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.design-head { display: flex; gap: 12px; align-items: center; }
+.thumbs { display: flex; gap: 6px; flex: none; }
+.thumb { width: 92px; height: 66px; border: 1px solid var(--rule); border-radius: 7px; background: var(--stage); display: block; }
+.design-act { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; min-width: 0; }
+input[type="range"] { accent-color: var(--accent); width: 100%; margin: 0; }
+input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); cursor: pointer; flex: none; }
+.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.studio-launch { top: 10px; right: 10px; padding: 0; }
+.studio-launch button { border: 0; background: transparent; padding: 6px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 6px; color: var(--ink); }
+.studio-launch button:hover { color: var(--accent); }
+.busy { top: 52px; }
+
+.studio { position: absolute; inset: 0; z-index: 5; background: var(--panel); display: flex; flex-direction: column; }
+.st-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+.st-bar.bottom { border-bottom: 0; border-top: 1px solid var(--rule); }
+.st-title { font-family: var(--f-display); font-weight: 600; font-size: 19px; margin-right: 4px; }
+.st-spacer { flex: 1 1 0; }
+.st-field { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+.st-field input[type="range"] { width: 110px; }
+.swatches { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.sw-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--rule); cursor: pointer; padding: 0; flex: none; }
+.sw-btn[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.st-stage { position: relative; flex: 1 1 auto; min-height: 0; background: var(--stage); }
+#ed { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: crosshair; }
+#ed.move { cursor: move; }
+.pv-wrap { position: absolute; right: 12px; bottom: 12px; width: 248px; height: 180px; border: 1px solid var(--rule); border-radius: 9px; overflow: hidden; background: var(--stage); box-shadow: 0 8px 24px rgba(10,14,30,.14); }
+.pv-wrap canvas { width: 100%; height: 100%; display: block; }
+.pv-label { position: absolute; left: 6px; top: 6px; padding: 2px 7px; font-size: 11px; }
+.st-tip { position: absolute; left: 12px; bottom: 12px; max-width: min(340px, calc(100% - 290px)); padding: 6px 9px; font-size: 12px; color: var(--muted); }
+.drop { position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--panel) 75%, transparent); font-weight: 600; color: var(--accent); pointer-events: none; }
+.filebtn { position: relative; overflow: hidden; }
+.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+.st-note { font-size: 12px; color: var(--accent); }
+
+/* ---------- export ---------- */
+.studio-launch { display: flex; padding: 2px; gap: 2px; }
+.xpreview { position: fixed; inset: 0; z-index: 60; background: rgba(12, 14, 22, .55); display: grid; place-items: center;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.xp-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px; width: min(900px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.xp-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--f-display); font-size: 17px; }
+.xp-head .btn { font-family: var(--f-ui); font-size: 13px; }
+.xp-img { min-height: 0; overflow: auto; border-radius: 6px; background: repeating-conic-gradient(var(--rule) 0% 25%, var(--panel) 0% 50%) 50% / 18px 18px; }
+.xp-img img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+
+@media (max-width: 820px) {
+  html, body { height: auto; }
+  .app { display: flex; flex-direction: column; height: auto; }
+  .stage { height: 62svh; min-height: 340px; }
+  .panel { overflow: visible; padding: 0; }
+  .hint { display: none; }
+  .studio { position: fixed; inset: 0; z-index: 50; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .st-bar { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); gap: 8px 10px; }
+  .st-field input[type="range"] { width: 84px; }
+  .pv-wrap { width: 136px; height: 100px; right: max(8px, env(safe-area-inset-right, 0px)); top: 8px; bottom: auto; }
+  .st-tip { display: none; }
+  html.studio-open, html.studio-open body { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell.flash { animation: none; border-color: var(--accent); }
+  .tog input, .tog input::after { transition: none; }
+}
+</style>
+
+<div class="app">
+  <section class="stage" aria-label="Spectre tiling">
+    <canvas id="cv" role="img" aria-label="Interactive Spectre tiling. Drag to pan, scroll or pinch to zoom, tap a tile to select it."></canvas>
+    <div class="chip caption" id="caption"></div>
+    <div class="chip studio-launch"><button type="button" id="launchStudio">Tile studio</button><button type="button" id="launchExport">Export</button></div>
+    <div class="chip busy" id="busy" hidden>Growing…</div>
+    <div class="chip hint">Drag to pan · scroll or pinch to zoom · tap a Spectre</div>
+    <div class="chip zoom">
+      <button id="zOut" aria-label="Zoom out">−</button>
+      <button id="zIn" aria-label="Zoom in">+</button>
+      <button id="zFit">Fit</button>
+    </div>
+
+    <div class="studio" id="studio" hidden role="dialog" aria-modal="false" aria-labelledby="st-title">
+      <div class="st-bar">
+        <span class="st-title" id="st-title">Tile studio</span>
+        <div class="seg" id="slotSeg" role="group" aria-label="Which design to edit"></div>
+        <span class="st-spacer"></span>
+        <span class="st-note" id="stNote" aria-live="polite"></span>
+        <button type="button" class="btn primary" id="stDone">Done</button>
+      </div>
+      <div class="st-bar">
+        <div class="seg" id="toolSeg" role="group" aria-label="Tool"></div>
+        <div class="swatches" id="swatches" role="group" aria-label="Brush colour"></div>
+        <input type="color" id="brushColour" aria-label="Custom brush colour" value="#1d4f9a">
+        <label class="st-field" for="brushSize">Size <input type="range" id="brushSize" min="1" max="40" value="10"></label>
+        <button type="button" class="btn" id="undoBtn">Undo</button>
+        <button type="button" class="btn" id="clearBtn">Clear drawing</button>
+      </div>
+      <div class="st-stage" id="stStage">
+        <canvas id="ed" aria-label="Drawing surface for one Spectre tile"></canvas>
+        <div class="chip st-tip">Lines that cross an edge at its dot, square to the edge, carry on into the neighbouring tile.</div>
+        <div class="pv-wrap"><canvas id="pv" aria-label="Live preview of the tiling"></canvas><span class="chip pv-label">Live preview</span></div>
+        <div class="drop" id="drop" hidden>Drop the picture onto the tile</div>
+      </div>
+      <div class="st-bar bottom">
+        <label class="btn filebtn">Add picture<input type="file" id="imgFile" accept="image/*"></label>
+        <label class="st-field" for="imgScale">Scale <input type="range" id="imgScale" min="40" max="1600" value="500"></label>
+        <label class="st-field" for="imgRot">Turn <input type="range" id="imgRot" min="-180" max="180" value="0"></label>
+        <button type="button" class="btn" id="imgFit">Fit picture</button>
+        <button type="button" class="btn" id="imgRemove">Remove picture</button>
+        <label class="st-field" for="bgColour">Tile colour <input type="color" id="bgColour" value="#f4efe4"></label>
+        <label class="tog"><input type="checkbox" id="tGuides" checked><span>Edge guides</span></label>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <header class="brand">
+      <svg class="glyph" viewBox="0 0 4.93 3.43" aria-hidden="true"><path d="M0.966 2.466L1.966 2.466L2.466 3.332L3.332 2.832L3.332 1.832L4.332 1.832L4.832 0.966L3.966 0.466L3.100 0.966L2.600 0.100L1.600 0.100L0.600 0.100L0.100 0.966L0.966 1.466Z"/></svg>
+      <div>
+        <h1>Spectre Lab</h1>
+        <p class="sub">The chiral aperiodic monotile, grown from nine hexagons and addressed by combinatorial coordinates.</p>
+        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v__SPECTRE_VERSION__</span>__SPECTRE_BUILD__ · __SPECTRE_DATE__</p>
+      </div>
+    </header>
+
+    <section class="group" aria-labelledby="h-patch">
+      <h2 class="eyebrow" id="h-patch">Patch</h2>
+      <div class="row"><span class="lbl" id="l-depth">Substitution steps</span><div class="seg" id="depthSeg" role="group" aria-labelledby="l-depth"></div></div>
+      <div class="row">
+        <label class="lbl" for="seedSel">Seed (which hexagon sits inside itself)</label>
+        <div class="seedwrap"><select id="seedSel"></select><button class="btn" id="reroll" type="button">New ancestry</button></div>
+      </div>
+      <p class="note" id="patchNote"></p>
+    </section>
+
+    <section class="group" aria-labelledby="h-display">
+      <h2 class="eyebrow" id="h-display">Display</h2>
+      <div class="row"><span class="lbl" id="l-colour">Colour by</span><div class="seg" id="colourSeg" role="group" aria-labelledby="l-colour"></div></div>
+      <div class="row" id="typeOrderRow"><span class="lbl" id="l-torder">Type of the enclosing hexagon of order</span><div class="seg" id="typeOrderSeg" role="group" aria-labelledby="l-torder"></div></div>
+      <div class="row"><span class="lbl" id="l-outline">Supertile outlines, by hexagon order</span><div class="seg" id="outlineSeg" role="group" aria-labelledby="l-outline"></div></div>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" id="tLetters"><span>Letters</span></label>
+        <label class="tog"><input type="checkbox" id="tCurved"><span>Curved edges</span></label>
+        <label class="tog"><input type="checkbox" id="tEdges"><span>Edge numbers</span></label>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="h-design">
+      <h2 class="eyebrow" id="h-design">Tile design</h2>
+      <div class="design-head">
+        <div class="thumbs"><canvas class="thumb" id="thumb0" aria-label="Your Spectre design"></canvas><canvas class="thumb" id="thumb1" aria-label="Design for the turned G halves" hidden></canvas></div>
+        <div class="design-act">
+          <button type="button" class="btn primary" id="openStudio">Open tile studio</button>
+          <label class="tog"><input type="checkbox" id="tDesign"><span>Use on the tiling</span></label>
+        </div>
+      </div>
+      <div class="row"><span class="lbl" id="l-place">Placement</span><div class="seg" id="placeSeg" role="group" aria-labelledby="l-place"></div></div>
+      <div class="row" id="planeRow"><label class="lbl" for="planeSize">Picture width: <span id="planeVal"></span> units</label><input type="range" id="planeSize" min="6" max="240" value="40"></div>
+      <div class="row"><label class="lbl" for="tint">Tint with the colour scheme above: <span id="tintVal"></span></label><input type="range" id="tint" min="0" max="100" value="0"></div>
+      <div class="row"><span class="lbl" id="l-grout">Grout</span><div class="inline"><div class="seg" id="groutSeg" role="group" aria-labelledby="l-grout"></div><input type="color" id="groutColour" value="#2d2b29" aria-label="Grout colour"></div></div>
+      <label class="tog"><input type="checkbox" id="tOwnG"><span>Own design for the turned G halves</span></label>
+      <p class="note" id="designNote"></p>
+    </section>
+
+    <section class="group" aria-labelledby="h-export">
+      <h2 class="eyebrow" id="h-export">Export</h2>
+      <div class="row"><span class="lbl" id="l-xarea">Area</span><div class="seg" id="xArea" role="group" aria-labelledby="l-xarea"></div></div>
+      <div class="row"><span class="lbl" id="l-xfmt">Format</span><div class="seg" id="xFormat" role="group" aria-labelledby="l-xfmt"></div></div>
+      <div class="row" id="xSizeRow"><span class="lbl" id="l-xsize">Long edge</span><div class="seg" id="xSize" role="group" aria-labelledby="l-xsize"></div></div>
+      <div class="row" id="xPageRow" hidden><span class="lbl" id="l-xpage">Page size</span><div class="seg" id="xPage" role="group" aria-labelledby="l-xpage"></div></div>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" id="xOverlays" checked><span>Outlines and letters</span></label>
+        <label class="tog" id="xTransRow"><input type="checkbox" id="xTrans"><span>Transparent background</span></label>
+      </div>
+      <div class="inline"><button type="button" class="btn primary" id="xGo">Save PNG</button><span class="note" id="xNote" aria-live="polite"></span></div>
+    </section>
+
+    <section class="group" aria-labelledby="h-sel">
+      <h2 class="eyebrow" id="h-sel">Selected Spectre</h2>
+      <div id="inspector"></div>
+    </section>
+
+    <section class="group" aria-labelledby="h-census">
+      <h2 class="eyebrow" id="h-census">Census</h2>
+      <div style="overflow-x:auto"><table class="census" id="census"></table></div>
+      <p class="note" id="censusNote"></p>
+    </section>
+
+    <section class="group about" aria-labelledby="h-about">
+      <h2 class="eyebrow" id="h-about">How it works</h2>
+      <p>Every step replaces each of the nine hexagon types (G D J L X P S F Y, the paper's Γ Δ Θ Λ Ξ Π Σ Φ Ψ) with seven or eight smaller ones. At the bottom, each hexagon becomes one Spectre, except G, which becomes two: the second is turned 30°, the only odd orientation in the tiling.</p>
+      <p>A Spectre's coordinates list which child it is of which hexagon, all the way up. Walking across an edge usually rewrites only the lowest one or two of them. Seeds that contain themselves make each patch sit exactly inside the next, so adding a step grows the tiling outward around what you are looking at.</p>
+      <p>Positions are exact. Each vertex is <span class="mono">a₀ + a₁d + a₂d² + a₃d³</span> with integer coefficients and <span class="mono">d = e<sup>iπ/6</sup></span>. Curved edges bulge out on even edges and in on odd ones; every shared edge still matches, which is the odd-to-even rule that makes the tile strongly chiral.</p>
+      <p>The tile studio paints one Spectre. Every tile in the patch reuses that painting, moved and turned to fit, and the turned G halves can carry a design of their own. Your design stays in this browser.</p>
+      <p>Sources: <a href="https://arxiv.org/abs/2305.17743" target="_blank" rel="noopener">A chiral aperiodic monotile</a> (Smith, Myers, Kaplan, Goodman-Strauss, 2023) and Simon Tatham's <a href="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-spectre/" target="_blank" rel="noopener">Combinatorial coordinates for the aperiodic Spectre tiling</a>. Hexagon letters, child numbers and edge numbers follow Tatham.</p>
+      <p>Spectre Lab v__SPECTRE_VERSION__ (build __SPECTRE_BUILD__) is released under the MIT License.</p>
+    </section>
+  </aside>
+</div>
+
+<div class="xpreview" id="xPreview" hidden role="dialog" aria-modal="true" aria-labelledby="xp-title">
+  <div class="xp-card">
+    <div class="xp-head"><b id="xp-title">Exported picture</b><button type="button" class="btn" id="xpClose">Close</button></div>
+    <p class="note" id="xpMsg"></p>
+    <div class="xp-img"><img id="xpImg" alt="Exported Spectre tiling"></div>
+  </div>
+</div>
+
+<script>
+/*CORE*/
+</script>
+<script>
+/*FORMATS*/
+</script>
+<script>
+/*APP*/
+</script>
