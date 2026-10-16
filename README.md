@@ -77,6 +77,12 @@ One-time setup: Settings > Pages > Source: **GitHub Actions**.
 - D. Smith, J. S. Myers, C. S. Kaplan and C. Goodman-Strauss, [A chiral aperiodic monotile](https://arxiv.org/abs/2305.17743) (2023). The nine hexagon substitution rules come from this paper, and the supertile placement follows the construction in Craig S. Kaplan's reference implementation that accompanies it.
 - Simon Tatham, [Combinatorial coordinates for the aperiodic Spectre tiling](https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-spectre/). The hexagon letters (G D J L X P S F Y), child numbers, Spectre edge numbers, the exact Z[d] coordinates and the four-colouring follow this article.
 
+## Support
+
+Spectre Lab is free and open source. If you enjoy it, you can [support it](https://buy.stripe.com/eVq5kC9rBalU61la739Zm00) with whatever you like. Payments go to Mark Florentino LLC through Stripe; they are voluntary and not tax-deductible donations.
+
+Ideas and code are welcome too: see the [open issues](https://github.com/sockmonke-rgb/Spectre-Lab/issues), such as [SVG export](https://github.com/sockmonke-rgb/Spectre-Lab/issues/1).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

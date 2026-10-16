@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.3 — 2026-10-16
+
+- A "Support Spectre Lab" link next to the README link and in How it works, to a pay-what-you-like Stripe page.
+
 ## 1.8.2 — 2026-10-16
 
 - A link to the README and source on GitHub, under the version line and in How it works.

@@ -104,8 +104,8 @@ button, select, input { font: inherit; color: inherit; }
 .build .ver { color: var(--ink); background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; margin-right: 7px; font-weight: 500; }
 h1 { font-family: var(--f-display); font-weight: 600; font-size: 30px; line-height: 1; margin: 0 0 4px; letter-spacing: -.01em; text-wrap: balance; }
 .sub { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
-.links { margin: 6px 0 0; font-size: 12.5px; line-height: 1.4; }
-.links a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.links { margin: 6px 0 0; font-size: 12.5px; line-height: 1.4; display: flex; flex-wrap: wrap; gap: 3px 16px; }
+.links a { color: var(--accent); text-decoration: none; font-weight: 500; white-space: nowrap; }
 .links a:hover, .links a:focus-visible { text-decoration: underline; }
 .group { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--rule); }
 .eyebrow { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
@@ -352,8 +352,8 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <div>
         <h1>Spectre Lab</h1>
         <p class="sub">The chiral aperiodic monotile, grown from nine hexagons and addressed by combinatorial coordinates.</p>
-        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.8.2</span>3e9be64 · 2026-10-16 20:21 UTC</p>
-        <p class="links"><a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source on GitHub ↗</a></p>
+        <p class="build" title="Version, build and build time. If this is older than the latest build, you are looking at a cached copy."><span class="ver">v1.8.3</span>c913297 · 2026-10-16 20:56 UTC</p>
+        <p class="links"><a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source on GitHub ↗</a><a href="https://buy.stripe.com/eVq5kC9rBalU61la739Zm00" target="_blank" rel="noopener">Support Spectre Lab ↗</a></p>
       </div>
     </header>
 
@@ -444,7 +444,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       <p>Positions are exact. Each vertex is <span class="mono">a₀ + a₁d + a₂d² + a₃d³</span> with integer coefficients and <span class="mono">d = e<sup>iπ/6</sup></span>. Curved edges bulge out on even edges and in on odd ones; every shared edge still matches, which is the odd-to-even rule that makes the tile strongly chiral.</p>
       <p>The tile studio paints one Spectre. Every tile in the patch reuses that painting, moved and turned to fit, and the turned G halves can carry a design of their own. Your design stays in this browser.</p>
       <p>Sources: <a href="https://arxiv.org/abs/2305.17743" target="_blank" rel="noopener">A chiral aperiodic monotile</a> (Smith, Myers, Kaplan, Goodman-Strauss, 2023) and Simon Tatham's <a href="https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/aperiodic-spectre/" target="_blank" rel="noopener">Combinatorial coordinates for the aperiodic Spectre tiling</a>. Hexagon letters, child numbers and edge numbers follow Tatham.</p>
-      <p>Spectre Lab v1.8.2 (build 3e9be64) is open source under the MIT License. The <a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source code</a> are on GitHub.</p>
+      <p>Spectre Lab v1.8.3 (build c913297) is open source under the MIT License. The <a href="https://github.com/sockmonke-rgb/Spectre-Lab#readme" target="_blank" rel="noopener">README and source code</a> are on GitHub. If you enjoy it, you can <a href="https://buy.stripe.com/eVq5kC9rBalU61la739Zm00" target="_blank" rel="noopener">support Spectre Lab</a> with whatever you like.</p>
     </section>
   </aside>
 </main>
@@ -847,7 +847,7 @@ const FileFormats = (function () {
   'use strict';
   const C = SpectreCore;
   // Filled in by scripts/build.js: the version from package.json, a hash of the sources, and the build time.
-  const BUILD = { version: '1.8.2', hash: '3e9be64', date: '2026-10-16 20:21 UTC' };
+  const BUILD = { version: '1.8.3', hash: 'c913297', date: '2026-10-16 20:56 UTC' };
   try { console.info(`Spectre Lab ${BUILD.version} (build ${BUILD.hash}, ${BUILD.date})`); } catch (_) {}
   const $ = id => document.getElementById(id);
   const MAXD = 5;
