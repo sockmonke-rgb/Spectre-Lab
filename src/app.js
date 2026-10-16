@@ -273,7 +273,7 @@
 
   const STARTER_PAR = 0;
   const D = { on: false, placement: 'turn', planeSize: 40, tint: 0, grout: 'fine', groutColour: '#2d2b29', ownG: false,
-              slot: 0, tool: 'brush', colour: '#1d4f9a', size: 10, guides: true, slots: [] };
+              slot: 0, tool: 'move', colour: '#1d4f9a', size: 10, guides: true, slots: [] };
   const SWATCHES = [['#1d4f9a', 'Cobalt'], ['#7fb3d9', 'Sky'], ['#3f8f73', 'Copper green'], ['#d8a23a', 'Ochre'],
                     ['#8e2f2a', 'Oxblood'], ['#5a3c6e', 'Manganese'], ['#1b1d24', 'Ink'], ['#fbfaf6', 'Tin white']];
   // multiply tints use the light palette whatever the theme, since the design itself does not change with theme
@@ -575,7 +575,7 @@
   }
   function pinchState() {
     const [a, b] = [...edPtrs.values()];
-    return { d: Math.hypot(a[0] - b[0], a[1] - b[1]), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    return { d: Math.hypot(a[0] - b[0], a[1] - b[1]), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], t: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI };
   }
   ed.addEventListener('pointerdown', e => {
     if (e.button > 0) return;
@@ -583,7 +583,7 @@
     const p = edPt(e); edPtrs.set(e.pointerId, p); cursorPt = p;
     if (edPtrs.size >= 2) {
       cancelAction();
-      const st = pinchState(); gesture = { d0: st.d, m0: st.m, active: false };
+      const st = pinchState(); gesture = { d0: st.d, m0: st.m, t0: st.t, active: false };
       return;
     }
     if (!waitAllUp) beginAction(p[0], p[1]);
@@ -596,19 +596,29 @@
       const st = pinchState();
       if (!gesture.active) {
         // a small dead zone, so resting two fingers on the glass does not jolt the picture
-        if (gesture.inert || (Math.abs(st.d - gesture.d0) < 14 && Math.hypot(st.m[0] - gesture.m0[0], st.m[1] - gesture.m0[1]) < 8)) return;
+        if (gesture.inert || (Math.abs(st.d - gesture.d0) < 14 && Math.hypot(st.m[0] - gesture.m0[0], st.m[1] - gesture.m0[1]) < 8
+            && Math.abs(wrapDeg(st.t - gesture.t0)) < 6)) return;
         const sl = cur();
-        if (gLocked() || !sl.img) { gesture.inert = true; if (!gLocked()) note('Add a picture, then pinch to resize it'); return; }
+        if (gLocked() || !sl.img) { gesture.inert = true; if (!gLocked()) note('Add a picture, then use two fingers to resize and turn it'); return; }
         pushUndo(sl);
-        gesture = { d0: st.d, m0: st.m, s0: sl.imgT.s, c0: [sl.imgT.x, sl.imgT.y], a0: e2l(st.m[0], st.m[1]), active: true };
+        gesture = { d0: st.d, m0: st.m, t0: gesture.t0, s0: sl.imgT.s, r0: sl.imgT.r, c0: l2e(sl.imgT.x, sl.imgT.y), rotOn: false, tr: 0, active: true };
         return;
       }
-      // damped: the picture grows more slowly than the fingers spread, so small movements make small changes
+      // Size is damped: the picture grows more slowly than the fingers spread. Turning starts once the fingers
+      // have turned 10°, so a plain pinch does not tilt the picture, then catches up to follow them exactly.
       const sl = cur(), f = Math.pow(st.d / Math.max(1, gesture.d0), 0.6);
       setPicScale(sl, gesture.s0 * f);
-      const k = sl.imgT.s / gesture.s0, am = e2l(st.m[0], st.m[1]);
-      sl.imgT.x = am[0] - (gesture.a0[0] - gesture.c0[0]) * k;
-      sl.imgT.y = am[1] - (gesture.a0[1] - gesture.c0[1]) * k;
+      const turned = wrapDeg(st.t - gesture.t0);
+      if (!gesture.rotOn && Math.abs(turned) > 10) { gesture.rotOn = true; gesture.tr = turned; }
+      const lag = gesture.rotOn ? gesture.tr * Math.max(0, 1 - Math.abs(wrapDeg(turned - gesture.tr)) / 30) : 0;
+      let dr = gesture.rotOn ? wrapDeg(turned - lag) : 0;
+      let r = wrapDeg(gesture.r0 + dr);
+      const snap = Math.round(r / 45) * 45;                  // settle onto 0°, 45°, 90°… when close
+      if (Math.abs(r - snap) < 2.5) { dr += snap - r; r = wrapDeg(snap); }
+      const k = sl.imgT.s / gesture.s0, rad = dr * Math.PI / 180, cs = Math.cos(rad), sn = Math.sin(rad);
+      const vx = (gesture.c0[0] - gesture.m0[0]) * k, vy = (gesture.c0[1] - gesture.m0[1]) * k;
+      const c = e2l(st.m[0] + vx * cs - vy * sn, st.m[1] + vx * sn + vy * cs);
+      sl.imgT.x = c[0]; sl.imgT.y = c[1]; sl.imgT.r = r;
       changed(sl); syncScaleLabel(sl);
       return;
     }
@@ -670,7 +680,10 @@
   const fitScale = sl => Math.max(BB.w, BB.h * sl.img.width / sl.img.height) * 1.04;   // just covers the tile
   const SCALE_MIN = 0.25, SCALE_MAX = 8;                                                // relative to that
   function setPicScale(sl, s) { const f = fitScale(sl); sl.imgT.s = clamp(s, f * SCALE_MIN, f * SCALE_MAX); }
+  const wrapDeg = a => { a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; };
   function syncScaleLabel(sl) {
+    $('imgRotVal').textContent = sl.img ? Math.round(sl.imgT.r) + '°' : '';
+    if (sl.img) $('imgRot').value = Math.round(sl.imgT.r);
     const rel = sl.img ? sl.imgT.s / fitScale(sl) : 1;
     $('imgScaleVal').textContent = sl.img ? Math.round(rel * 100) + '%' : '';
     if (sl.img) $('imgScale').value = Math.round(50 * Math.log2(rel));
@@ -692,6 +705,36 @@
     const it = [...e.clipboardData.items].find(x => x.type && x.type.startsWith('image/'));
     if (it) { e.preventDefault(); loadFile(it.getAsFile()); }
   });
+
+  // ---- − / + steppers for sliders: tap for one step, hold to repeat ----
+  const steppers = [];
+  function addStepper(input, step, name) {
+    const mkBtn = (txt, label) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'step-btn'; b.textContent = txt; b.setAttribute('aria-label', label); return b; };
+    const minus = mkBtn('−', 'Decrease ' + name), plus = mkBtn('+', 'Increase ' + name);
+    input.before(minus); input.after(plus);
+    let timer = 0, moved = false;
+    const bump = dir => {
+      if (input.disabled) return;
+      const v = clamp(+input.value + dir * step, +input.min, +input.max);
+      if (v === +input.value) return;
+      input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); moved = true;
+    };
+    const stop = () => {
+      clearTimeout(timer); clearInterval(timer); timer = 0;
+      if (moved) { moved = false; input.dispatchEvent(new Event('change', { bubbles: true })); }
+    };
+    [[minus, -1], [plus, 1]].forEach(([b, dir]) => {
+      b.addEventListener('pointerdown', e => {
+        if (e.button > 0) return;
+        e.preventDefault(); stop(); bump(dir);
+        timer = setTimeout(() => { timer = setInterval(() => bump(dir), 70); }, 400);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => b.addEventListener(t, stop));
+      b.addEventListener('click', e => { if (e.detail === 0) { bump(dir); stop(); } });   // keyboard
+    });
+    steppers.push({ input, minus, plus });
+  }
+  function syncSteppers() { for (const s of steppers) s.minus.disabled = s.plus.disabled = s.input.disabled; }
 
   // ---- studio controls ----
   function sliderUndo(el, apply) {
@@ -758,7 +801,7 @@
     setPicScale(sl, fitScale(sl) * Math.pow(2, +$('imgScale').value / 50));
     $('imgScaleVal').textContent = Math.round(sl.imgT.s / fitScale(sl) * 100) + '%';
   });
-  sliderUndo($('imgRot'), sl => { if (sl.img) sl.imgT.r = +$('imgRot').value; });
+  sliderUndo($('imgRot'), sl => { if (sl.img) { sl.imgT.r = +$('imgRot').value; $('imgRotVal').textContent = sl.imgT.r + '°'; } });
   sliderUndo($('bgColour'), sl => { sl.bg = $('bgColour').value; });
   $('imgFit').addEventListener('click', () => { const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); fitPicture(sl); changed(sl, true); syncStudio(); });
   $('imgRemove').addEventListener('click', () => {
@@ -767,6 +810,11 @@
     changed(sl, true); syncStudio(); syncDesign(); note('Picture removed. Undo brings it back');
   });
   $('tGuides').addEventListener('change', e => { D.guides = e.target.checked; edRequest(); });
+  addStepper($('brushSize'), 1, 'brush size');
+  addStepper($('imgScale'), 5, 'picture scale');
+  addStepper($('imgRot'), 1, 'picture turn');
+  addStepper($('planeSize'), 2, 'picture width');
+  addStepper($('tint'), 5, 'tint');
   $('stDone').addEventListener('click', closeStudio);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && studioOpen) closeStudio(); });
   new ResizeObserver(() => edResize()).observe(stStage);
@@ -779,7 +827,7 @@
     $('tLoops').checked = !!(gLocked() ? D.slots[0] : sl).loops;
     const hasImg = !!sl.img;
     $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = !hasImg;
-    if (hasImg) $('imgRot').value = Math.round(sl.imgT.r);
+    syncSteppers();
     syncScaleLabel(sl);
     ed.classList.toggle('move', D.tool === 'move');
     const locked = gLocked();

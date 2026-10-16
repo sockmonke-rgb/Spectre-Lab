@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 — 2026-10-16
+
+- The tile studio opens on Move picture instead of Brush.
+- Two fingers turn the picture as well as resize it. Turning starts once the fingers have turned 10°, so a plain pinch does not tilt the picture, then catches up to follow the fingers exactly. It settles onto 0°, 45°, 90° and so on when close.
+- − and + buttons beside every slider (brush size, picture scale and turn, picture width, tint): tap for one step, hold to repeat. Turn steps by 1°, scale by about 7%.
+- The Turn slider shows the angle.
+
 ## 1.3.4 — 2026-10-16
 
 - Tile studio: the frame stays put again (the view zoom from 1.3.3 is gone). Pinching with two fingers resizes the picture instead, damped so it grows more slowly than the fingers spread, around the point between the fingers. One pinch is one undo step.
