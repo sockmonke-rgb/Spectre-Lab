@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2 — 2026-10-16
+
+- A link to the README and source on GitHub, under the version line and in How it works.
+
 ## 1.8.1 — 2026-10-16
 
 - Exports download directly when Spectre Lab runs as a page of its own, such as the website at sockmonke-rgb.github.io/Spectre-Lab. PDF export works there too; before, any view without the claude.ai save prompt showed the export as a picture instead, and a PDF came out as a PNG. Inside a frame, where browsers can block downloads, the picture is still shown.
