@@ -2,6 +2,15 @@
 
 An interactive explorer for the Spectre, the chiral aperiodic monotile found by Smith, Myers, Kaplan and Goodman-Strauss in 2023. It is a single self-contained HTML page: no install, no server, no dependencies.
 
+**[Open Spectre Lab](https://sockmonke-rgb.github.io/Spectre-Lab/)**
+
+<a href="https://sockmonke-rgb.github.io/Spectre-Lab/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.webp">
+    <img src="docs/screenshot-light.webp" alt="Spectre Lab: a patch of about 4,400 Spectre tiles coloured by hexagon type, beside the controls panel">
+  </picture>
+</a>
+
 ## What it does
 
 - **Grows a real Spectre tiling** by substituting nine hexagon types, from 1 to 5 steps (9 to about 35,000 tiles). Seeds that contain themselves keep each patch exactly inside the next, so adding a step grows the tiling around what you are looking at. A random ancestry option makes up the hierarchy one level at a time, weighted by how common each hexagon type is.
@@ -10,6 +19,10 @@ An interactive explorer for the Spectre, the chiral aperiodic monotile found by 
 - **Combinatorial coordinates:** tap a tile to see which child it is of which hexagon, all the way to the root, and walk across any of its 14 edges.
 - **Tile studio:** paint one Spectre or place a picture on it, then tessellate it. The design can turn with each tile, stay upright, or become one picture spread under the whole tiling. Tint, grout and a separate design for the turned G halves are optional.
 - **Export** a PNG (2,000 to 8,000 px on the long edge, optionally transparent) or a one-page PDF (A4, A3 or Letter, about 300 dpi).
+
+| Design one tile in the tile studio | and every Spectre in the tiling takes it on |
+| --- | --- |
+| <img src="docs/tile-studio.webp" alt="The tile studio: a blue-and-white rosette placed on a single Spectre, with its 14 numbered edges and a live preview"> | <img src="docs/tiled-design.webp" alt="The rosette design repeated across the aperiodic tiling, each copy turned with its tile"> |
 
 ## Using it
 
@@ -54,7 +67,7 @@ Set `SOURCE_DATE_EPOCH` to fix the build timestamp. The source hash depends only
 
 ## Deploying
 
-Every push to `main` publishes the site through GitHub Actions (`.github/workflows/pages.yml`): it runs the tests, builds the page from `src/`, and serves it as `index.html`. The build stamp uses the commit time, so a given commit always produces the same page. If the committed `dist/` is older than `src/`, the run still deploys a fresh build and leaves a warning.
+Every push to `main` publishes the site through GitHub Actions (`.github/workflows/pages.yml`), except pushes that only touch `docs/` or Markdown files: it runs the tests, builds the page from `src/`, and serves it as `index.html`. The build stamp uses the commit time, so a given commit always produces the same page. If the committed `dist/` is older than `src/`, the run still deploys a fresh build and leaves a warning.
 
 One-time setup: Settings > Pages > Source: **GitHub Actions**.
 
