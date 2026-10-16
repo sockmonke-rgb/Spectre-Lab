@@ -63,7 +63,7 @@ button, select, input { font: inherit; color: inherit; }
 .caption b { color: var(--ink); font-weight: 500; }
 .hint { bottom: 10px; left: 10px; padding: 5px 9px; font-size: 12px; color: var(--muted); max-width: calc(100% - 150px); }
 .zoom { bottom: 10px; right: 10px; display: flex; padding: 3px; gap: 2px; }
-.zoom button, .st-zoom button { border: 0; background: transparent; min-width: 34px; height: 30px; border-radius: 5px; cursor: pointer; font-weight: 600; padding: 0 8px; }
+.zoom button { border: 0; background: transparent; min-width: 34px; height: 30px; border-radius: 5px; cursor: pointer; font-weight: 600; padding: 0 8px; }
 .zoom button:hover { background: var(--accent-soft); }
 .busy { top: 10px; right: 10px; padding: 5px 10px; font-size: 12px; color: var(--accent); }
 
@@ -169,6 +169,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
 .st-spacer { flex: 1 1 0; }
 .st-field { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
 .st-field input[type="range"] { width: 110px; }
+.st-val { min-width: 3.2em; font-family: var(--f-mono); font-size: 11.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .swatches { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
 .sw-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--rule); cursor: pointer; padding: 0; flex: none; }
 .sw-btn[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
@@ -178,9 +179,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
 .pv-wrap { position: absolute; right: 12px; bottom: 12px; width: 248px; height: 180px; border: 1px solid var(--rule); border-radius: 9px; overflow: hidden; background: var(--stage); box-shadow: 0 8px 24px rgba(10,14,30,.14); }
 .pv-wrap canvas { width: 100%; height: 100%; display: block; }
 .pv-label { position: absolute; left: 6px; top: 6px; padding: 2px 7px; font-size: 11px; }
-.st-zoom { left: 12px; bottom: 12px; display: flex; padding: 3px; gap: 2px; }
-.st-zoom button:hover { background: var(--accent-soft); }
-.st-tip { position: absolute; left: 12px; bottom: 56px; max-width: min(340px, calc(100% - 290px)); padding: 6px 9px; font-size: 12px; color: var(--muted); }
+.st-tip { position: absolute; left: 12px; bottom: 12px; max-width: min(340px, calc(100% - 290px)); padding: 6px 9px; font-size: 12px; color: var(--muted); }
 .drop { position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--panel) 75%, transparent); font-weight: 600; color: var(--accent); pointer-events: none; }
 .filebtn { position: relative; overflow: hidden; }
 .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
@@ -256,7 +255,6 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       </div>
       <div class="st-stage" id="stStage">
         <canvas id="ed" aria-label="Drawing surface for one Spectre tile"></canvas>
-        <div class="chip st-zoom"><button type="button" id="edOut" aria-label="Zoom out">−</button><button type="button" id="edIn" aria-label="Zoom in">+</button><button type="button" id="edFit">Fit</button></div>
         <div class="chip st-tip">Lines that cross an edge at its dot, square to the edge, carry on into the neighbouring tile.</div>
         <div class="pv-wrap"><canvas id="pv" aria-label="Live preview of the tiling"></canvas><span class="chip pv-label">Live preview</span></div>
         <div class="drop" id="drop" hidden>Drop the picture onto the tile</div>
@@ -264,7 +262,7 @@ input[type="color"] { width: 32px; height: 28px; padding: 2px; border: 1px solid
       </div>
       <div class="st-bar bottom">
         <label class="btn filebtn">Add picture<input type="file" id="imgFile" accept="image/*"></label>
-        <label class="st-field" for="imgScale">Scale <input type="range" id="imgScale" min="40" max="1600" value="500"></label>
+        <label class="st-field" for="imgScale">Scale <input type="range" id="imgScale" min="-100" max="150" step="1" value="0"><span class="st-val" id="imgScaleVal"></span></label>
         <label class="st-field" for="imgRot">Turn <input type="range" id="imgRot" min="-180" max="180" value="0"></label>
         <button type="button" class="btn" id="imgFit">Fit picture</button>
         <button type="button" class="btn" id="imgRemove">Remove picture</button>

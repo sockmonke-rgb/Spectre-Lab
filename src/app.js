@@ -443,15 +443,7 @@
   // ---- studio ----
   const studio = $('studio'), ed = $('ed'), ectx = ed.getContext('2d'), pv = $('pv'), pctx = pv.getContext('2d');
   let EW = 0, EH = 0, ES = 40, ECX = 0, ECY = 0, PW = 0, PH = 0, edRaf = 0, cursorPt = null, studioOpen = false;
-  let ES0 = 40, ECX0 = 0, ECY0 = 0, EZ = 1, EPX = 0, EPY = 0;      // fitted view, then zoom and pan on top
-  const EZ_MIN = 0.6, EZ_MAX = 8;
-  function applyEdView() { ES = ES0 * EZ; ECX = ECX0 + EPX; ECY = ECY0 + EPY; }
-  function zoomEdAt(x, y, f) {
-    const nz = clamp(EZ * f, EZ_MIN, EZ_MAX), g = nz / EZ;
-    const cx = x - (x - ECX) * g, cy = y - (y - ECY) * g;
-    EZ = nz; EPX = cx - ECX0; EPY = cy - ECY0; applyEdView(); edRequest();
-  }
-  function resetEdView() { EZ = 1; EPX = 0; EPY = 0; applyEdView(); edRequest(); }
+
   let stroke = null, dragImg = null, noteT = 0;
   const cur = () => D.slots[D.slot];
   const e2l = (ex, ey) => [BB.cx + (ex - ECX) / ES, BB.cy - (ey - ECY) / ES];
@@ -468,9 +460,8 @@
     // fit the tile, keeping clear of the preview
     let aw = EW, ah = EH, ay = 0;
     if (EW >= 700) aw = EW - 272; else { ay = PH + 14; ah = EH - ay; }
-    ES0 = Math.max(12, Math.min((aw - 56) / (BB.w + 0.7), (ah - 56) / (BB.h + 0.7)));
-    ECX0 = aw / 2; ECY0 = ay + ah / 2;
-    applyEdView();
+    ES = Math.max(12, Math.min((aw - 56) / (BB.w + 0.7), (ah - 56) / (BB.h + 0.7)));
+    ECX = aw / 2; ECY = ay + ah / 2;
     edRequest();
   }
   function edRequest() { if (!edRaf) edRaf = requestAnimationFrame(() => { edRaf = 0; drawEditor(); drawPreview(); }); }
@@ -604,16 +595,21 @@
       if (edPtrs.size < 2) return;
       const st = pinchState();
       if (!gesture.active) {
-        // a small dead zone, so resting two fingers on the glass does not jolt the view
-        if (Math.abs(st.d - gesture.d0) < 14 && Math.hypot(st.m[0] - gesture.m0[0], st.m[1] - gesture.m0[1]) < 8) return;
-        gesture = { d0: st.d, m0: st.m, z0: EZ, cx0: ECX, cy0: ECY, active: true };
+        // a small dead zone, so resting two fingers on the glass does not jolt the picture
+        if (gesture.inert || (Math.abs(st.d - gesture.d0) < 14 && Math.hypot(st.m[0] - gesture.m0[0], st.m[1] - gesture.m0[1]) < 8)) return;
+        const sl = cur();
+        if (gLocked() || !sl.img) { gesture.inert = true; if (!gLocked()) note('Add a picture, then pinch to resize it'); return; }
+        pushUndo(sl);
+        gesture = { d0: st.d, m0: st.m, s0: sl.imgT.s, c0: [sl.imgT.x, sl.imgT.y], a0: e2l(st.m[0], st.m[1]), active: true };
         return;
       }
-      const nz = clamp(gesture.z0 * st.d / Math.max(1, gesture.d0), EZ_MIN, EZ_MAX), g = nz / gesture.z0;
-      EZ = nz;
-      EPX = st.m[0] - (gesture.m0[0] - gesture.cx0) * g - ECX0;
-      EPY = st.m[1] - (gesture.m0[1] - gesture.cy0) * g - ECY0;
-      applyEdView(); edRequest();
+      // damped: the picture grows more slowly than the fingers spread, so small movements make small changes
+      const sl = cur(), f = Math.pow(st.d / Math.max(1, gesture.d0), 0.6);
+      setPicScale(sl, gesture.s0 * f);
+      const k = sl.imgT.s / gesture.s0, am = e2l(st.m[0], st.m[1]);
+      sl.imgT.x = am[0] - (gesture.a0[0] - gesture.c0[0]) * k;
+      sl.imgT.y = am[1] - (gesture.a0[1] - gesture.c0[1]) * k;
+      changed(sl); syncScaleLabel(sl);
       return;
     }
     const sl = cur(), [ex, ey] = p;
@@ -625,7 +621,10 @@
     const p = edPt(e);
     edPtrs.delete(e.pointerId);
     if (gesture) {
-      if (edPtrs.size < 2) { gesture = null; waitAllUp = edPtrs.size > 0; }
+      if (edPtrs.size < 2) {
+        if (gesture.active) { changed(cur(), true); syncStudio(); }
+        gesture = null; waitAllUp = edPtrs.size > 0;
+      }
       return;
     }
     if (edPtrs.size === 0) waitAllUp = false;
@@ -635,17 +634,14 @@
   ed.addEventListener('pointerup', edUp);
   ed.addEventListener('pointercancel', edUp);
   ed.addEventListener('pointerleave', () => { cursorPt = null; edRequest(); });
+  // scroll in Move picture, or a trackpad pinch (ctrl+wheel) anywhere, resizes the picture
   ed.addEventListener('wheel', e => {
     e.preventDefault();
-    const sl = cur(), [x, y] = edPt(e);
-    if (D.tool === 'move' && sl.img && !e.ctrlKey && !gLocked()) {
-      sl.imgT.s = clamp(sl.imgT.s * Math.exp(-e.deltaY * 0.0015), 0.4, 16); changed(sl, true); syncStudio(); return;
-    }
-    zoomEdAt(x, y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));   // ctrl+wheel is a trackpad pinch
+    const sl = cur();
+    if (gLocked() || !sl.img || (D.tool !== 'move' && !e.ctrlKey)) return;
+    setPicScale(sl, sl.imgT.s * Math.exp(-e.deltaY * (e.ctrlKey ? 0.006 : 0.0012)));
+    changed(sl, true); syncStudio();
   }, { passive: false });
-  $('edIn').addEventListener('click', () => zoomEdAt(ECX, ECY, 1.4));
-  $('edOut').addEventListener('click', () => zoomEdAt(ECX, ECY, 1 / 1.4));
-  $('edFit').addEventListener('click', resetEdView);
   // keep the page itself from zooming while the studio is open (Safari's own pinch gesture)
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => studio.addEventListener(t, e => e.preventDefault(), { passive: false }));
 
@@ -671,9 +667,17 @@
     changed(sl, true); syncStudio(); syncDesign();
     note(hadLoops ? 'Picture added and edge loops switched off. Drag the picture to place it' : 'Picture added. Drag it to place it, or use Scale and Turn');
   }
+  const fitScale = sl => Math.max(BB.w, BB.h * sl.img.width / sl.img.height) * 1.04;   // just covers the tile
+  const SCALE_MIN = 0.25, SCALE_MAX = 8;                                                // relative to that
+  function setPicScale(sl, s) { const f = fitScale(sl); sl.imgT.s = clamp(s, f * SCALE_MIN, f * SCALE_MAX); }
+  function syncScaleLabel(sl) {
+    const rel = sl.img ? sl.imgT.s / fitScale(sl) : 1;
+    $('imgScaleVal').textContent = sl.img ? Math.round(rel * 100) + '%' : '';
+    if (sl.img) $('imgScale').value = Math.round(50 * Math.log2(rel));
+  }
   function fitPicture(sl) {
     if (!sl.img) return;
-    sl.imgT = { x: BB.cx, y: BB.cy, s: Math.max(BB.w, BB.h * sl.img.width / sl.img.height) * 1.04, r: 0 };
+    sl.imgT = { x: BB.cx, y: BB.cy, s: fitScale(sl), r: 0 };
   }
   $('imgFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
   const stStage = $('stStage'), dropEl = $('drop');
@@ -749,7 +753,11 @@
     pushUndo(sl); sl.loops = e.target.checked; if (sl.loops) sl.loopsInk = D.colour;
     changed(sl, true);
   });
-  sliderUndo($('imgScale'), sl => { if (sl.img) sl.imgT.s = +$('imgScale').value / 100; });
+  sliderUndo($('imgScale'), sl => {
+    if (!sl.img) return;
+    setPicScale(sl, fitScale(sl) * Math.pow(2, +$('imgScale').value / 50));
+    $('imgScaleVal').textContent = Math.round(sl.imgT.s / fitScale(sl) * 100) + '%';
+  });
   sliderUndo($('imgRot'), sl => { if (sl.img) sl.imgT.r = +$('imgRot').value; });
   sliderUndo($('bgColour'), sl => { sl.bg = $('bgColour').value; });
   $('imgFit').addEventListener('click', () => { const sl = cur(); if (gLocked() || !sl.img) return; pushUndo(sl); fitPicture(sl); changed(sl, true); syncStudio(); });
@@ -771,7 +779,8 @@
     $('tLoops').checked = !!(gLocked() ? D.slots[0] : sl).loops;
     const hasImg = !!sl.img;
     $('imgScale').disabled = $('imgRot').disabled = $('imgFit').disabled = $('imgRemove').disabled = !hasImg;
-    if (hasImg) { $('imgScale').value = Math.round(sl.imgT.s * 100); $('imgRot').value = Math.round(sl.imgT.r); }
+    if (hasImg) $('imgRot').value = Math.round(sl.imgT.r);
+    syncScaleLabel(sl);
     ed.classList.toggle('move', D.tool === 'move');
     const locked = gLocked();
     studio.classList.toggle('locked', locked);
@@ -785,7 +794,6 @@
   function openStudio(slot) {
     if (slot != null) D.slot = slot;
     studio.hidden = false; studioOpen = true; document.documentElement.classList.add('studio-open');
-    EZ = 1; EPX = 0; EPY = 0;
     syncStudio(); requestAnimationFrame(edResize);
     setTimeout(() => $('stDone').focus({ preventScroll: true }), 0);
   }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.4 — 2026-10-16
+
+- Tile studio: the frame stays put again (the view zoom from 1.3.3 is gone). Pinching with two fingers resizes the picture instead, damped so it grows more slowly than the fingers spread, around the point between the fingers. One pinch is one undo step.
+- The Scale slider is logarithmic and shows the size as a percentage of the size that just covers the tile, from 25% to 800%. Scrolling in Move picture, or a trackpad pinch, resizes the picture too.
+- A pinch still never draws, and Fill still acts when the finger lifts.
+
 ## 1.3.3 — 2026-10-16
 
 - Tile studio: two fingers now zoom and pan the drawing view instead of the whole page. Zoom follows the fingers, with a small dead zone so resting two fingers does not jolt the view, and is limited to 0.6× to 8×.
