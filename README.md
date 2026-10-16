@@ -13,7 +13,7 @@ An interactive explorer for the Spectre, the chiral aperiodic monotile found by 
 
 ## Using it
 
-Open `dist/spectre-lab.html` in a browser.
+Live at **https://sockmonke-rgb.github.io/Spectre-Lab/**, or open `dist/spectre-lab.html` in a browser.
 
 - Fonts come from Google Fonts; without a connection the page falls back to system fonts.
 - Saving files uses the save prompt when the page runs as a Claude artifact. Opened anywhere else, an export appears in a window, where you can right-click or long-press it to save.
@@ -51,6 +51,12 @@ Set `SOURCE_DATE_EPOCH` to fix the build timestamp. The source hash depends only
 | `scripts/build.js` | Assembles `src/` into `dist/spectre-lab.html` |
 | `test/` | Tests for the engine and the file formats |
 | `dist/spectre-lab.html` | The built page, committed so the repo works without building |
+
+## Deploying
+
+Every push to `main` publishes the site through GitHub Actions (`.github/workflows/pages.yml`): it runs the tests, builds the page from `src/`, and serves it as `index.html`. The build stamp uses the commit time, so a given commit always produces the same page. If the committed `dist/` is older than `src/`, the run still deploys a fresh build and leaves a warning.
+
+One-time setup: Settings > Pages > Source: **GitHub Actions**.
 
 ## Sources and credits
 
