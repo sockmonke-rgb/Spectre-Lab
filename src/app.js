@@ -443,6 +443,15 @@
   // ---- studio ----
   const studio = $('studio'), ed = $('ed'), ectx = ed.getContext('2d'), pv = $('pv'), pctx = pv.getContext('2d');
   let EW = 0, EH = 0, ES = 40, ECX = 0, ECY = 0, PW = 0, PH = 0, edRaf = 0, cursorPt = null, studioOpen = false;
+  let ES0 = 40, ECX0 = 0, ECY0 = 0, EZ = 1, EPX = 0, EPY = 0;      // fitted view, then zoom and pan on top
+  const EZ_MIN = 0.6, EZ_MAX = 8;
+  function applyEdView() { ES = ES0 * EZ; ECX = ECX0 + EPX; ECY = ECY0 + EPY; }
+  function zoomEdAt(x, y, f) {
+    const nz = clamp(EZ * f, EZ_MIN, EZ_MAX), g = nz / EZ;
+    const cx = x - (x - ECX) * g, cy = y - (y - ECY) * g;
+    EZ = nz; EPX = cx - ECX0; EPY = cy - ECY0; applyEdView(); edRequest();
+  }
+  function resetEdView() { EZ = 1; EPX = 0; EPY = 0; applyEdView(); edRequest(); }
   let stroke = null, dragImg = null, noteT = 0;
   const cur = () => D.slots[D.slot];
   const e2l = (ex, ey) => [BB.cx + (ex - ECX) / ES, BB.cy - (ey - ECY) / ES];
@@ -459,8 +468,9 @@
     // fit the tile, keeping clear of the preview
     let aw = EW, ah = EH, ay = 0;
     if (EW >= 700) aw = EW - 272; else { ay = PH + 14; ah = EH - ay; }
-    ES = Math.max(12, Math.min((aw - 56) / (BB.w + 0.7), (ah - 56) / (BB.h + 0.7)));
-    ECX = aw / 2; ECY = ay + ah / 2;
+    ES0 = Math.max(12, Math.min((aw - 56) / (BB.w + 0.7), (ah - 56) / (BB.h + 0.7)));
+    ECX0 = aw / 2; ECY0 = ay + ah / 2;
+    applyEdView();
     edRequest();
   }
   function edRequest() { if (!edRaf) edRaf = requestAnimationFrame(() => { edRaf = 0; drawEditor(); drawPreview(); }); }
@@ -541,35 +551,103 @@
     sl.dctx.putImageData(out, 0, 0); return true;
   }
   const edPt = e => { const r = ed.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-  ed.addEventListener('pointerdown', e => {
-    if (e.button > 0) return;
-    try { ed.setPointerCapture(e.pointerId); } catch (_) {}
-    const [ex, ey] = edPt(e), sl = cur(); cursorPt = [ex, ey];
+  const edPtrs = new Map();
+  let gesture = null, waitAllUp = false, fillAt = null;
+  function beginAction(ex, ey) {
+    const sl = cur();
     if (gLocked()) { note('Tap “Give them their own design” first'); return; }
     if (D.tool === 'brush' || D.tool === 'eraser') {
       pushUndo(sl); stroke = { last: toPx(ex, ey) }; paintSeg(sl, stroke.last, stroke.last); changed(sl);
     } else if (D.tool === 'fill') {
-      pushUndo(sl); const [px, py] = toPx(ex, ey);
-      if (flood(sl, px, py, hexRGB(D.colour))) changed(sl, true); else { sl.undo.pop(); note('Tap inside the tile to fill an area'); }
+      fillAt = [ex, ey];                                 // fill on release, so a pinch never fills
     } else if (D.tool === 'move') {
       if (!sl.img) { note('Add a picture first, then drag it into place'); return; }
       pushUndo(sl); dragImg = { ex, ey, x: sl.imgT.x, y: sl.imgT.y };
     }
+  }
+  function cancelAction() {
+    fillAt = null;
+    if (!stroke && !dragImg) return;
+    const sl = cur(), snap = sl.undo.pop();
+    if (snap) { sl.dctx.putImageData(snap.draw, 0, 0); sl.imgT = snap.imgT; }
+    stroke = null; dragImg = null; compose(sl); edRequest();
+  }
+  function finishAction(ex, ey) {
+    if (fillAt) {
+      const sl = cur(), moved = Math.hypot(ex - fillAt[0], ey - fillAt[1]) > 10; fillAt = null;
+      if (moved || gLocked()) return;
+      pushUndo(sl); const [px, py] = toPx(ex, ey);
+      if (flood(sl, px, py, hexRGB(D.colour))) changed(sl, true); else { sl.undo.pop(); note('Tap inside the tile to fill an area'); }
+      return;
+    }
+    if (stroke || dragImg) { stroke = null; dragImg = null; changed(cur(), true); }
+  }
+  function pinchState() {
+    const [a, b] = [...edPtrs.values()];
+    return { d: Math.hypot(a[0] - b[0], a[1] - b[1]), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+  }
+  ed.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    try { ed.setPointerCapture(e.pointerId); } catch (_) {}
+    const p = edPt(e); edPtrs.set(e.pointerId, p); cursorPt = p;
+    if (edPtrs.size >= 2) {
+      cancelAction();
+      const st = pinchState(); gesture = { d0: st.d, m0: st.m, active: false };
+      return;
+    }
+    if (!waitAllUp) beginAction(p[0], p[1]);
   });
   ed.addEventListener('pointermove', e => {
-    const [ex, ey] = edPt(e), sl = cur(); cursorPt = [ex, ey];
-    if (stroke) { const p = toPx(ex, ey); paintSeg(sl, stroke.last, p); stroke.last = p; changed(sl); }
+    const p = edPt(e); cursorPt = p;
+    if (edPtrs.has(e.pointerId)) edPtrs.set(e.pointerId, p);
+    if (gesture) {
+      if (edPtrs.size < 2) return;
+      const st = pinchState();
+      if (!gesture.active) {
+        // a small dead zone, so resting two fingers on the glass does not jolt the view
+        if (Math.abs(st.d - gesture.d0) < 14 && Math.hypot(st.m[0] - gesture.m0[0], st.m[1] - gesture.m0[1]) < 8) return;
+        gesture = { d0: st.d, m0: st.m, z0: EZ, cx0: ECX, cy0: ECY, active: true };
+        return;
+      }
+      const nz = clamp(gesture.z0 * st.d / Math.max(1, gesture.d0), EZ_MIN, EZ_MAX), g = nz / gesture.z0;
+      EZ = nz;
+      EPX = st.m[0] - (gesture.m0[0] - gesture.cx0) * g - ECX0;
+      EPY = st.m[1] - (gesture.m0[1] - gesture.cy0) * g - ECY0;
+      applyEdView(); edRequest();
+      return;
+    }
+    const sl = cur(), [ex, ey] = p;
+    if (stroke) { const q = toPx(ex, ey); paintSeg(sl, stroke.last, q); stroke.last = q; changed(sl); }
     else if (dragImg) { sl.imgT.x = dragImg.x + (ex - dragImg.ex) / ES; sl.imgT.y = dragImg.y - (ey - dragImg.ey) / ES; changed(sl); }
     else edRequest();
   });
-  const edUp = () => { if (stroke || dragImg) { stroke = null; dragImg = null; changed(cur(), true); } };
+  function edUp(e) {
+    const p = edPt(e);
+    edPtrs.delete(e.pointerId);
+    if (gesture) {
+      if (edPtrs.size < 2) { gesture = null; waitAllUp = edPtrs.size > 0; }
+      return;
+    }
+    if (edPtrs.size === 0) waitAllUp = false;
+    if (e.type === 'pointercancel') { cancelAction(); return; }
+    finishAction(p[0], p[1]);
+  }
   ed.addEventListener('pointerup', edUp);
   ed.addEventListener('pointercancel', edUp);
   ed.addEventListener('pointerleave', () => { cursorPt = null; edRequest(); });
   ed.addEventListener('wheel', e => {
-    const sl = cur(); if (D.tool !== 'move' || !sl.img) return;
-    e.preventDefault(); sl.imgT.s = clamp(sl.imgT.s * Math.exp(-e.deltaY * 0.0015), 0.4, 16); changed(sl, true); syncStudio();
+    e.preventDefault();
+    const sl = cur(), [x, y] = edPt(e);
+    if (D.tool === 'move' && sl.img && !e.ctrlKey && !gLocked()) {
+      sl.imgT.s = clamp(sl.imgT.s * Math.exp(-e.deltaY * 0.0015), 0.4, 16); changed(sl, true); syncStudio(); return;
+    }
+    zoomEdAt(x, y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));   // ctrl+wheel is a trackpad pinch
   }, { passive: false });
+  $('edIn').addEventListener('click', () => zoomEdAt(ECX, ECY, 1.4));
+  $('edOut').addEventListener('click', () => zoomEdAt(ECX, ECY, 1 / 1.4));
+  $('edFit').addEventListener('click', resetEdView);
+  // keep the page itself from zooming while the studio is open (Safari's own pinch gesture)
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => studio.addEventListener(t, e => e.preventDefault(), { passive: false }));
 
   // ---- pictures ----
   function loadFile(file) {
@@ -707,6 +785,7 @@
   function openStudio(slot) {
     if (slot != null) D.slot = slot;
     studio.hidden = false; studioOpen = true; document.documentElement.classList.add('studio-open');
+    EZ = 1; EPX = 0; EPY = 0;
     syncStudio(); requestAnimationFrame(edResize);
     setTimeout(() => $('stDone').focus({ preventScroll: true }), 0);
   }

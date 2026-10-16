@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.3 — 2026-10-16
+
+- Tile studio: two fingers now zoom and pan the drawing view instead of the whole page. Zoom follows the fingers, with a small dead zone so resting two fingers does not jolt the view, and is limited to 0.6× to 8×.
+- A pinch never draws, fills or moves the picture: a stroke started by the first finger is taken back when the second one lands, and Fill now acts when the finger lifts.
+- Zoom buttons and Fit in the studio; ctrl+scroll or a trackpad pinch zooms on desktop.
+
 ## 1.3.2 — 2026-10-16
 
 - New tile designs start blank. The arcs that used to be painted into every new design are now an "Edge loops" switch in the tile studio, off unless you turn it on.
